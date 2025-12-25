@@ -356,7 +356,7 @@ def main():
     print("=" * 70)
     
     # Retornar código de salida
-    sys.exit(0)
+    sys.exit(0) 
 
 
 if __name__ == "__main__":

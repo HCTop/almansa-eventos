@@ -1,1 +1,54 @@
-[]
+[
+  {
+    "id": "ballet-bella-durmiente-2025",
+    "titulo": "La Bella Durmiente - Ballet",
+    "descripcion": "Ballet clásico de Tchaikovsky interpretado por compañía profesional. Una obra maestra del ballet con vestuario y escenografía espectaculares.",
+    "fecha": "2025-12-19",
+    "hora": "20:00",
+    "lugar": "Teatro Regio - Almansa",
+    "precio": "28€",
+    "categoria": "CULTURA",
+    "urlEvento": "https://latintadealmansa.com",
+    "urlImagen": ""
+  },
+  {
+    "id": "concierto-navidad-coral-2025",
+    "titulo": "Concierto Navideño - Coral Unión Musical",
+    "descripcion": "Concierto navideño a cargo de la Coral Unión Musical de Almansa. Villancicos tradicionales y piezas navideñas en un ambiente festivo.",
+    "fecha": "2025-12-20",
+    "hora": "19:00",
+    "lugar": "Iglesia de los Franciscanos",
+    "precio": "GRATIS",
+    "categoria": "MUSICA",
+    "urlEvento": "https://latintadealmansa.com",
+    "urlImagen": ""
+  },
+  {
+    "id": "concentracion-motera-solidaria-2025",
+    "titulo": "Concentración Motera Solidaria",
+    "descripcion": "Concentración de motociclistas con fines solidarios. Recogida de juguetes y alimentos para familias necesitadas de Almansa.",
+    "fecha": "2025-12-21",
+    "hora": "18:30",
+    "lugar": "Plaza Santa María",
+    "precio": "GRATIS",
+    "categoria": "FIESTA",
+    "urlEvento": "https://latintadealmansa.com",
+    "urlImagen": ""
+  },
+  {
+    "id": "san-silvestre-2025",
+    "titulo": "San Silvestre Memorial Paco Flores",
+    "descripcion": "Carrera popular nocturna por las calles de Almansa. Recorrido de 5km con ambiente festivo y premios para los participantes.",
+    "fecha": "2025-12-27",
+    "hora": "18:00",
+    "lugar": "Centro de Almansa",
+    "precio": "3€",
+    "categoria": "DEPORTE",
+    "urlEvento": "https://latintadealmansa.com",
+    "urlImagen": ""
+  },
+  {
+    "id": "teatro-monstruos-2025",
+    "titulo": "MONSTRUOS - Teatro +16",
+    "descripcion": "Obra de teatro contemporánea para público adulto. Temática de suspense psicológico con crítica social.",
+    "fecha": "2025-12-29",

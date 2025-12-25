@@ -1,0 +1,57 @@
+name: Actualizar Eventos Almansa
+
+# Se ejecuta automáticamente cada lunes a las 9:00 AM
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Lunes 9:00 AM UTC
+  workflow_dispatch:  # También permite ejecución manual
+
+jobs:
+  extraer-eventos:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repositorio
+      uses: actions/checkout@v3
+      
+    - name: Configurar Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Instalar dependencias
+      run: |
+        pip install selenium beautifulsoup4 requests lxml
+        pip install webdriver-manager
+        
+    - name: Instalar Chrome y ChromeDriver
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y chromium-browser chromium-chromedriver
+        
+    - name: Ejecutar extractor
+      run: python3 scripts/extractor_eventos.py
+      
+    - name: Verificar JSON generado
+      run: |
+        if [ -f eventos_agenda.json ]; then
+          echo "✅ JSON generado correctamente"
+          cat eventos_agenda.json | jq '.' > /dev/null || exit 1
+        else
+          echo "❌ Error: JSON no generado"
+          exit 1
+        fi
+        
+    - name: Commit y Push cambios
+      run: |
+        git config --global user.name 'GitHub Actions Bot'
+        git config --global user.email 'bot@github.com'
+        git add eventos_agenda.json
+        git commit -m "🤖 Actualización automática de eventos - $(date +'%Y-%m-%d')" || echo "No hay cambios"
+        git push
+        
+    - name: Notificación de éxito
+      if: success()
+      run: |
+        echo "🎉 Eventos actualizados correctamente"
+        echo "📊 Total eventos: $(cat eventos_agenda.json | jq '. | length')"

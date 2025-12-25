@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extractor Manual Eventos Giglon → JSON</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        .content { padding: 30px; }
+        
+        .step {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        .step h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .step-number {
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            resize: vertical;
+            min-height: 150px;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 10px 5px;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        button:active { transform: translateY(0); }
+        
+        .output-area {
+            background: #2d3748;
+            color: #a0aec0;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .output-area pre {
+            color: #68d391;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .alert-info { background: #e3f2fd; border-left: 4px solid #2196f3; color: #1565c0; }
+        .alert-success { background: #e8f5e9; border-left: 4px solid #4caf50; color: #2e7d32; }
+        .alert-warning { background: #fff3e0; border-left: 4px solid #ff9800; color: #e65100; }
+        
+        .code-block {
+            background: #2d3748;
+            color: #68d391;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Extractor Manual Giglon → JSON</h1>
+            <p>Herramienta para convertir eventos de Giglon a formato JSON para Almansa Informa</p>
+        </div>
+        
+        <div class="content">
+            <!-- INSTRUCCIONES -->
+            <div class="alert alert-info">
+                <strong>📌 IMPORTANTE:</strong> Esta herramienta te permite extraer eventos de Giglon manualmente cuando el scraping automático falla.
+            </div>
+            
+            <!-- PASO 1 -->
+            <div class="step">
+                <h3><span class="step-number">1</span> Abrir Consola del Navegador</h3>
+                <p>1. Ve a <a href="https://www.giglon.com/todos?city=Almansa" target="_blank">Giglon Almansa</a></p>
+                <p>2. Presiona <strong>F12</strong> (o <code>Ctrl+Shift+I</code>)</p>
+                <p>3. Ve a la pestaña <strong>Console</strong></p>
+            </div>
+            
+            <!-- PASO 2 -->
+            <div class="step">
+                <h3><span class="step-number">2</span> Copiar y Ejecutar el Script</h3>
+                <p>Copia este código y pégalo en la consola del navegador:</p>
+                
+                <div class="code-block" id="scriptCode">
+// ===================================================================
+// EXTRACTOR DE EVENTOS GIGLON → JSON
+// ===================================================================
+
+(function() {
+    console.log('🚀 Iniciando extracción de eventos...');
+    
+    const eventos = [];
+    
+    // Buscar todas las tarjetas de eventos
+    const tarjetas = document.querySelectorAll('.event-item, .evento, [class*="event"]');
+    
+    if (tarjetas.length === 0) {
+        console.error('❌ No se encontraron eventos. Verifica los selectores.');
+        console.log('💡 Intenta inspeccionar un evento y buscar su clase CSS');
+        return;
+    }
+    
+    console.log(`📋 Procesando ${tarjetas.length} eventos...`);
+    
+    tarjetas.forEach((tarjeta, index) => {
+        try {
+            // Extraer título
+            const tituloElem = tarjeta.querySelector('h3, h2, .title, .titulo, [class*="title"]');
+            const titulo = tituloElem ? tituloElem.textContent.trim() : `Evento ${index + 1}`;
+            
+            // Extraer fecha
+            const fechaElem = tarjeta.querySelector('time, .fecha, .date, [datetime]');
+            let fecha = '';
+            if (fechaElem) {
+                fecha = fechaElem.getAttribute('datetime') || fechaElem.textContent.trim();
+                // Convertir formato DD/MM/YYYY a YYYY-MM-DD
+                const match = fecha.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                if (match) {
+                    fecha = `${match[3]}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}`;
+                }
+            }
+            
+            // Extraer lugar
+            const lugarElem = tarjeta.querySelector('.venue, .lugar, .location');
+            const lugar = lugarElem ? lugarElem.textContent.trim() : 'Teatro Regio Almansa';
+            
+            // Extraer precio
+            const precioElem = tarjeta.querySelector('.price, .precio, [class*="price"]');
+            const precio = precioElem ? precioElem.textContent.trim() : 'Consultar';
+            
+            // Extraer URL
+            const linkElem = tarjeta.querySelector('a[href]');
+            let url = linkElem ? linkElem.href : '';
+            
+            // Extraer descripción
+            const descElem = tarjeta.querySelector('.description, .descripcion, p');
+            const descripcion = descElem ? descElem.textContent.trim().substring(0, 250) : titulo;
+            
+            // Detectar categoría
+            const textoCompleto = (titulo + descripcion).toLowerCase();
+            let categoria = 'CULTURA';
+            if (textoCompleto.includes('concierto') || textoCompleto.includes('música')) categoria = 'MUSICA';
+            if (textoCompleto.includes('infantil') || textoCompleto.includes('niños')) categoria = 'INFANTIL';
+            if (textoCompleto.includes('deporte')) categoria = 'DEPORTE';
+            if (textoCompleto.includes('fiesta') || textoCompleto.includes('feria')) categoria = 'FIESTA';
+            
+            // Crear objeto evento
+            const evento = {
+                id: `evt_giglon_${Date.now()}_${index}`,
+                titulo: titulo,
+                descripcion: descripcion,
+                fecha: fecha || '2026-01-01',
+                hora: extraerHora(fecha) || 'Por confirmar',
+                lugar: lugar,
+                categoria: categoria,
+                precio: precio,
+                urlCompra: url,
+                esGratuito: precio.toLowerCase().includes('gratis'),
+                fuente: 'Giglon'
+            };
+            
+            eventos.push(evento);
+            console.log(`✅ ${titulo}`);
+            
+        } catch (error) {
+            console.warn(`⚠️ Error procesando evento ${index}:`, error);
+        }
+    });
+    
+    // Función auxiliar para extraer hora
+    function extraerHora(texto) {
+        if (!texto) return null;
+        const match = texto.match(/(\d{1,2}):(\d{2})/);
+        return match ? match[0] : null;
+    }
+    
+    // Convertir a JSON
+    const json = JSON.stringify(eventos, null, 2);
+    
+    // Mostrar resultado
+    console.log('\n🎉 EXTRACCIÓN COMPLETADA');
+    console.log(`📊 Total eventos: ${eventos.length}`);
+    console.log('\n📋 COPIA EL JSON A CONTINUACIÓN:\n');
+    console.log(json);
+    
+    // Copiar al portapapeles automáticamente
+    navigator.clipboard.writeText(json).then(() => {
+        console.log('\n✅ JSON copiado al portapapeles!');
+        alert(`✅ ${eventos.length} eventos extraídos y copiados al portapapeles!`);
+    }).catch(() => {
+        console.log('\n⚠️ Copia manualmente el JSON de arriba');
+    });
+    
+    // Retornar para inspección
+    return eventos;
+})();
+                </div>
+                
+                <button onclick="copiarScript()">📋 Copiar Script</button>
+            </div>
+            
+            <!-- PASO 3 -->
+            <div class="step">
+                <h3><span class="step-number">3</span> Pegar el JSON Aquí</h3>
+                <p>El JSON debería copiarse automáticamente. Si no, cópialo de la consola y pégalo aquí:</p>
+                <textarea id="jsonInput" placeholder='[{"id": "evt_001", "titulo": "..."}]'></textarea>
+                <button onclick="procesarJSON()">🔄 Procesar y Validar JSON</button>
+                <button onclick="descargarJSON()">💾 Descargar eventos_agenda.json</button>
+            </div>
+            
+            <!-- RESULTADO -->
+            <div id="resultado" style="display:none;">
+                <div class="alert alert-success">
+                    <strong>✅ JSON Válido!</strong> <span id="numEventos"></span> eventos procesados correctamente.
+                </div>
+                <div class="output-area">
+                    <pre id="jsonOutput"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function copiarScript() {
+            const script = document.getElementById('scriptCode').textContent;
+            navigator.clipboard.writeText(script).then(() => {
+                alert('✅ Script copiado al portapapeles!\n\nAhora:\n1. Ve a Giglon\n2. Abre la consola (F12)\n3. Pega el script y presiona Enter');
+            });
+        }
+        
+        function procesarJSON() {
+            const input = document.getElementById('jsonInput').value;
+            
+            if (!input.trim()) {
+                alert('❌ Por favor pega el JSON primero');
+                return;
+            }
+            
+            try {
+                const eventos = JSON.parse(input);
+                
+                if (!Array.isArray(eventos)) {
+                    throw new Error('El JSON debe ser un array');
+                }
+                
+                // Validar estructura
+                eventos.forEach((e, i) => {
+                    if (!e.id || !e.titulo || !e.fecha) {
+                        throw new Error(`Evento ${i} incompleto: falta id, titulo o fecha`);
+                    }
+                });
+                
+                // Mostrar resultado
+                document.getElementById('numEventos').textContent = eventos.length;
+                document.getElementById('jsonOutput').textContent = JSON.stringify(eventos, null, 2);
+                document.getElementById('resultado').style.display = 'block';
+                
+                // Guardar en localStorage
+                localStorage.setItem('eventosExtraidos', JSON.stringify(eventos));
+                
+            } catch (error) {
+                alert('❌ JSON inválido:\n' + error.message);
+            }
+        }
+        
+        function descargarJSON() {
+            const input = document.getElementById('jsonInput').value;
+            
+            if (!input.trim()) {
+                alert('❌ Primero procesa el JSON');
+                return;
+            }
+            
+            try {
+                const eventos = JSON.parse(input);
+                const blob = new Blob([JSON.stringify(eventos, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'eventos_agenda.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                alert('✅ Archivo descargado!\n\nAhora cópialo a:\napp/src/main/assets/eventos_agenda.json');
+                
+            } catch (error) {
+                alert('❌ Error al descargar: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
+                

@@ -7,15 +7,27 @@ EXTRACTOR MULTI-FUENTE v3.0 - ALMANSA INFORMA
 
 Extrae eventos de múltiples fuentes web y genera un JSON unificado.
 
-FUENTES ACTIVAS:
-1. La Tinta de Almansa - Programaciones
-2. Ayuntamiento de Almansa - RSS (Actualidad + Cultura)
-3. TomaTicket (Teatro Regio + Teatro Principal)
-4. DeAlmansa.com
-5. La Tinta RSS (backup)
+FUENTES ACTIVAS (con estructura de eventos reales):
+1. TomaTicket (Teatro Regio + Teatro Principal) ✅
+   → Eventos con fecha, hora y lugar concretos
+   
+2. DeAlmansa.com ⚠️
+   → A verificar si tiene estructura de eventos
+   
+3. La Tinta RSS (backup) ⚠️
+   → Ocasionalmente tiene eventos en noticias
 
-DESACTIVADO:
-- Almansa Cultura (bloqueado por firewall anti-bot)
+FUENTES DESACTIVADAS:
+❌ Almansa Cultura → Bloqueado por firewall anti-bot
+❌ Ayuntamiento RSS → Solo noticias generales, NO eventos estructurados
+❌ La Tinta Programaciones → Programaciones trimestrales, NO eventos individuales
+
+CRITERIO DE INCLUSIÓN:
+Para que una fuente sea válida debe proporcionar:
+- Título del evento
+- Fecha concreta (ej: 2025-12-25)
+- Hora (ej: 20:00)
+- Lugar específico (ej: Teatro Regio)
 
 Autor: HCTop
 Fecha: 2025-12-26
@@ -89,50 +101,85 @@ def determinar_categoria(titulo: str, descripcion: str) -> str:
     return "CULTURA"
 
 def es_evento(titulo: str, descripcion: str) -> bool:
-    """Determina si la noticia es sobre un evento - VERSIÓN AMPLIADA"""
-    
-    keywords = [
-        # Tipos de eventos
-        'programa', 'eventos', 'concierto', 'teatro', 'festival',
-        'feria', 'fiestas', 'actuación', 'espectáculo', 'exposición',
-        'taller', 'charla', 'jornada', 'encuentro', 'celebra',
-        'presentación', 'inauguración', 'estreno', 'gala', 'función',
-        'proyección', 'recital', 'tributo', 'homenaje', 'muestra',
-        'certamen', 'competición', 'carrera', 'maratón', 'torneo',
-        'campeonato', 'semifinal', 'final', 'partido',
-        
-        # Palabras relacionadas con eventos
-        'entradas', 'inscripc', 'asistir', 'participar', 'acudir',
-        'agenda', 'actividad', 'programación', 'calendario',
-        
-        # Lugares típicos de eventos
-        'teatro regio', 'teatro principal', 'auditorio', 'castillo',
-        'pabellón', 'estadio', 'plaza mayor', 'sala', 'polideportivo',
-        
-        # Indicadores temporales
-        'próximo', 'este sábado', 'este domingo', 'el día',
-        'horario', 'hora:', 'a las', 'desde las', 'hasta el',
-        
-        # Deportes y ocio
-        'torneo', 'liga', 'clasificación', 'campeonato', 'exhibición'
-    ]
+    """Determina si la noticia es sobre un evento público/cultural - VERSIÓN FILTRADA"""
     
     texto = (titulo + " " + descripcion).lower()
     
-    # REGLA 1: Indicadores de precio = casi seguro es evento
-    if any(p in texto for p in ['€', 'euros', 'precio:', 'gratuito', 'gratis', 'entrada libre', 'entrada gratuita']):
+    # ========== PASO 1: LISTA DE EXCLUSIÓN (BLACKLIST) ==========
+    # Rechazar noticias administrativas/institucionales
+    palabras_excluidas = [
+        # Infraestructura y obras
+        'asfaltado', 'acerado', 'pavimento', 'obra', 'construcción',
+        'infraestructura', 'inversión', 'presupuesto', 'licitación',
+        'adjudicación', 'contrato', 'proyecto técnico',
+        
+        # Servicios municipales
+        'limpieza', 'residuos', 'basura', 'contenedor', 'flota',
+        'vehículo', 'maquinaria', 'compra', 'adquisición',
+        
+        # Administración
+        'pleno', 'junta de gobierno', 'ordenanza', 'reglamento',
+        'convenio', 'subvención municipal', 'ayuda económica',
+        'padrón', 'censo', 'empadronamiento',
+        
+        # Urbanismo
+        'licencia de obra', 'plan urbanístico', 'pgou',
+        'reparcelación', 'expropiación',
+        
+        # Tecnología administrativa
+        'certificado digital', 'sede electrónica', 'trámite online',
+        'app municipal', 'plataforma digital'
+    ]
+    
+    # Si contiene palabras excluidas → NO ES EVENTO
+    if any(excl in texto for excl in palabras_excluidas):
+        return False
+    
+    # ========== PASO 2: DETECCIÓN POSITIVA DE EVENTOS ==========
+    
+    # REGLA PRIORITARIA: Eventos explícitos de instituciones culturales
+    instituciones_culturales = [
+        'teatro regio', 'teatro principal', 'auditorio',
+        'centro joven', 'casa de la juventud', 'centro cultural',
+        'biblioteca', 'museo', 'sala de exposiciones',
+        'polideportivo', 'pabellón deportivo'
+    ]
+    
+    if any(inst in texto for inst in instituciones_culturales):
+        # Si menciona una institución cultural + actividad → SÍ ES EVENTO
+        actividades = ['programación', 'actividad', 'taller', 'curso', 'jornada']
+        if any(act in texto for act in actividades):
+            return True
+    
+    # REGLA 1: Indicadores de precio = evento de pago
+    if any(p in texto for p in ['€', 'euros', 'entrada', 'taquilla', 'venta de entradas']):
         return True
     
-    # REGLA 2: Patrón de fecha explícita
-    if re.search(r'\d{1,2}\s+de\s+\w+', texto):
+    # REGLA 2: Palabras clave FUERTES de eventos culturales
+    eventos_claros = [
+        'concierto', 'teatro', 'festival', 'feria', 'verbena',
+        'actuación', 'espectáculo', 'exposición', 'muestra',
+        'gala', 'función', 'proyección', 'estreno',
+        'recital', 'tributo', 'homenaje', 'certamen',
+        'torneo', 'campeonato', 'maratón', 'carrera popular',
+        'cuentacuentos', 'títeres', 'circo'
+    ]
+    
+    if any(evt in texto for evt in eventos_claros):
         return True
     
-    # REGLA 3: Horario explícito
-    if re.search(r'a las \d{1,2}[:\d]*', texto):
-        return True
+    # REGLA 3: Eventos infantiles/familiares
+    if 'infantil' in texto or 'niños' in texto or 'familia' in texto:
+        if any(w in texto for w in ['actividad', 'taller', 'programación', 'navidad', 'reyes']):
+            return True
     
-    # REGLA 4: Keywords normales
-    return any(kw in texto for kw in keywords)
+    # REGLA 4: Eventos navideños/festivos (época específica)
+    if any(fiesta in texto for fiesta in ['navidad', 'reyes', 'carnaval', 'semana santa', 'fiestas']):
+        if any(w in texto for w in ['programación', 'actividad', 'celebración']):
+            return True
+    
+    # Si no cumple ninguna regla positiva → NO es evento
+    return False
 
 def parsear_fecha_es(texto_fecha: str) -> Optional[str]:
     """Parsea fechas en español y las convierte a formato ISO"""
@@ -445,11 +492,13 @@ def main():
     
     print("\n📡 FASE 1: EXTRACCIÓN DE TODAS LAS FUENTES\n")
     
-    # EXTRACCIÓN
-    eventos_tinta_prog = extraer_la_tinta_programaciones()
+    # EXTRACCIÓN - SOLO FUENTES CON ESTRUCTURA DE EVENTOS
+    # eventos_tinta_prog = extraer_la_tinta_programaciones()  # DESACTIVADO (programaciones trimestrales, no eventos individuales)
+    eventos_tinta_prog = []
     # eventos_almansa = extraer_almansa_cultura()  # DESACTIVADO (bloquea bots)
-    eventos_almansa = []  # Vacío mientras esté bloqueado
-    eventos_ayto = extraer_ayuntamiento_almansa()
+    eventos_almansa = []
+    # eventos_ayto = extraer_ayuntamiento_almansa()  # DESACTIVADO (solo noticias, no eventos estructurados)
+    eventos_ayto = []
     eventos_tomaticket = extraer_tomaticket()
     eventos_dealmansa = extraer_dealmansa()
     eventos_tinta_rss = extraer_la_tinta_rss()

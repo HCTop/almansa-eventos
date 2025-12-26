@@ -1,57 +1,39 @@
 name: Actualizar Eventos Almansa
 
-# Se ejecuta automáticamente cada lunes a las 9:00 AM
 on:
   schedule:
-    - cron: '0 9 * * 1'  # Lunes 9:00 AM UTC
-  workflow_dispatch:  # También permite ejecución manual
+    # Ejecutar cada domingo a las 12:00 UTC
+    - cron: '0 12 * * 0'
+  
+  workflow_dispatch: # Permite ejecución manual
 
 jobs:
   extraer-eventos:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repositorio
-      uses: actions/checkout@v3
+      - name: 📥 Checkout del repositorio
+        uses: actions/checkout@v4
       
-    - name: Configurar Python 3.10
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-        
-    - name: Instalar dependencias
-      run: |
-        pip install selenium beautifulsoup4 requests lxml
-        pip install webdriver-manager
-        
-    - name: Instalar Chrome y ChromeDriver
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y chromium-browser chromium-chromedriver
-        
-    - name: Ejecutar extractor
-      run: python3 scripts/extractor_eventos.py
+      - name: 🐍 Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
       
-    - name: Verificar JSON generado
-      run: |
-        if [ -f eventos_agenda.json ]; then
-          echo "✅ JSON generado correctamente"
-          cat eventos_agenda.json | jq '.' > /dev/null || exit 1
-        else
-          echo "❌ Error: JSON no generado"
-          exit 1
-        fi
-        
-    - name: Commit y Push cambios
-      run: |
-        git config --global user.name 'GitHub Actions Bot'
-        git config --global user.email 'bot@github.com'
-        git add eventos_agenda.json
-        git commit -m "🤖 Actualización automática de eventos - $(date +'%Y-%m-%d')" || echo "No hay cambios"
-        git push
-        
-    - name: Notificación de éxito
-      if: success()
-      run: |
-        echo "🎉 Eventos actualizados correctamente"
-        echo "📊 Total eventos: $(cat eventos_agenda.json | jq '. | length')"
+      - name: 📦 Instalar dependencias
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 🕷️ Extraer eventos de las fuentes
+        run: |
+          cd scripts
+          python3 extractor_eventos_v3.py
+      
+      - name: 📤 Commit y Push de eventos_agenda.json
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add scripts/eventos_agenda.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🔄 Actualización automática de eventos - $(date +'%Y-%m-%d %H:%M')" && git push)

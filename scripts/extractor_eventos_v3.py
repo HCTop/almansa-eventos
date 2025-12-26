@@ -14,7 +14,7 @@ import sys
 from typing import List, Dict, Set
 
 # ============================================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN 
 # ============================================================================
 
 OUTPUT_FILE = "eventos_agenda.json"

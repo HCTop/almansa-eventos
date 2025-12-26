@@ -1,1 +1,67 @@
-[]
+[
+  {
+    "id": "evt_c6d0be96a678",
+    "titulo": "Ulises en 21",
+    "descripcion": "Viernes",
+    "fecha": "2025-12-26",
+    "hora": "20:00",
+    "lugar": "Teatro Regio",
+    "categoria": "CULTURA",
+    "precio": "Consultar en taquilla",
+    "urlCompra": "https://www.tomaticket.es/es-es/entradas-ulises-en-21",
+    "esGratuito": false,
+    "fuente": "TomaTicket"
+  },
+  {
+    "id": "evt_2c9621be8f1e",
+    "titulo": "ISABEL AAIÚN-GIRA POTRA SALVAJE en 21",
+    "descripcion": "Domingo",
+    "fecha": "2025-12-28",
+    "hora": "19:30",
+    "lugar": "Teatro Regio",
+    "categoria": "CULTURA",
+    "precio": "Consultar en taquilla",
+    "urlCompra": "https://www.tomaticket.es/es-es/recintos/teatro-regio-almansa",
+    "esGratuito": false,
+    "fuente": "TomaTicket"
+  },
+  {
+    "id": "evt_cff0cb7f6f40",
+    "titulo": "LO DE LOS MONÓLOGOS - Villanueva del Arzobispo en JAÉN",
+    "descripcion": "Sábado",
+    "fecha": "2026-01-03",
+    "hora": "19:30",
+    "lugar": "Teatro Regio",
+    "categoria": "CULTURA",
+    "precio": "Consultar en taquilla",
+    "urlCompra": "https://www.tomaticket.es/es-es/recintos/teatro-regio-almansa",
+    "esGratuito": false,
+    "fuente": "TomaTicket"
+  },
+  {
+    "id": "evt_94406ee9cacd",
+    "titulo": "INCREIBLE PANDO-EL MAGO en 21",
+    "descripcion": "Sábado",
+    "fecha": "2026-02-14",
+    "hora": "20:00",
+    "lugar": "Teatro Regio",
+    "categoria": "CULTURA",
+    "precio": "Consultar en taquilla",
+    "urlCompra": "https://www.tomaticket.es/es-es/recintos/teatro-regio-almansa",
+    "esGratuito": false,
+    "fuente": "TomaTicket"
+  },
+  {
+    "id": "evt_1cb862b0dd54",
+    "titulo": "IDOLS-LA REVOLUCIÓN K-POP - LAS GUERRERAS DEL RITMO en 21",
+    "descripcion": "Viernes",
+    "fecha": "2026-05-22",
+    "hora": "18:00",
+    "lugar": "Teatro Regio",
+    "categoria": "CULTURA",
+    "precio": "Consultar en taquilla",
+    "urlCompra": "https://www.tomaticket.es/es-es/recintos/teatro-regio-almansa",
+    "esGratuito": false,
+    "fuente": "TomaTicket"
+  }
+]

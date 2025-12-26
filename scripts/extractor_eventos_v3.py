@@ -22,7 +22,7 @@ OUTPUT_FILE = "eventos_agenda.json"
 # URLs de las fuentes
 LA_TINTA_RSS = "https://latintadealmansa.com/feed/"
 LA_TINTA_PROGRAMACION = "https://latintadealmansa.com/cultura/"
-ALMANSA_CULTURA_EVENTOS = "https://almansacultura.es/index.php/inicio/eventos"
+ALMANSA_CULTURA_EVENTOS = "https://www.almansacultura.es/index.php/eventos"
 AYUNTAMIENTO_RSS = "https://almansa.es/category/actualidad/feed/"
 AYUNTAMIENTO_CULTURA = "https://almansa.es/category/cultura/feed/"
 TOMATICKET_REGIO = "https://www.tomaticket.es/es-es/recintos/teatro-regio-almansa"

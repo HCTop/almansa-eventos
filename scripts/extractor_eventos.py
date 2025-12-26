@@ -4,22 +4,20 @@
 """
 Script para extraer eventos de Almansa desde múltiples fuentes.
 Genera un archivo JSON listo para consumir desde GitHub Pages.
+
+ESTRATEGIA ANTI-BLOQUEO:
+1. Intentar con requests + BeautifulSoup (más rápido, menos detectable)
+2. Si falla, usar Selenium con configuración anti-detección
 """
 
 import json
 import time
 import sys
+import random
 from datetime import datetime
 from typing import List, Dict, Optional
 import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 
 # ==============================================================================
 # CONFIGURACIÓN
@@ -28,6 +26,16 @@ from webdriver_manager.chrome import ChromeDriverManager
 URL_GIGLON = "https://www.giglon.com/todos?city=Almansa"
 URL_LA_TINTA_RSS = "https://latintadealmansa.com/feed/"
 ARCHIVO_SALIDA = "eventos_agenda.json"
+
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1'
+}
 
 CATEGORIAS = {
     "teatro": "CULTURA",
@@ -95,7 +103,7 @@ def parsear_fecha_giglon(texto_fecha: str) -> Optional[tuple]:
         
         return (fecha_iso, fecha_mostrar)
     except Exception as e:
-        print(f"Error parseando fecha '{texto_fecha}': {e}")
+        print(f"⚠️ Error parseando fecha '{texto_fecha}': {e}")
         return None
 
 def extraer_lugar_giglon(descripcion: str) -> str:
@@ -117,50 +125,32 @@ def extraer_lugar_giglon(descripcion: str) -> str:
     return "Por confirmar"
 
 # ==============================================================================
-# EXTRACTOR DE GIGLON (SELENIUM)
+# MÉTODO 1: EXTRACTOR CON REQUESTS (MÁS RÁPIDO Y MENOS DETECTABLE)
 # ==============================================================================
 
-def configurar_chrome_driver():
-    """Configura el navegador Chrome en modo headless."""
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-    
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    return driver
-
-def extraer_eventos_giglon() -> List[Dict]:
-    """Extrae eventos de Giglon usando Selenium."""
-    print("\n🔍 Extrayendo eventos de GIGLON...")
+def extraer_eventos_giglon_requests() -> List[Dict]:
+    """Extrae eventos de Giglon usando requests + BeautifulSoup."""
+    print("\n🔍 Método 1: Extrayendo de GIGLON con requests...")
     eventos = []
-    driver = None
     
     try:
-        driver = configurar_chrome_driver()
-        driver.get(URL_GIGLON)
+        # Hacer petición con headers realistas
+        print("📡 Conectando a Giglon...")
+        response = requests.get(URL_GIGLON, headers=HEADERS, timeout=15)
+        response.raise_for_status()
         
-        # Esperar a que carguen los eventos (máximo 15 segundos)
-        print("⏳ Esperando a que cargue la página...")
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "a.event-grid"))
-        )
+        print(f"✅ Respuesta recibida (código {response.status_code})")
         
-        # Scroll para cargar más eventos
-        print("📜 Haciendo scroll para cargar todos los eventos...")
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3)
+        # Parsear HTML
+        soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Parsear con BeautifulSoup
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        
-        # Buscar todas las tarjetas de eventos (SELECTORES ACTUALIZADOS)
+        # Buscar tarjetas de eventos
         tarjetas = soup.select('a.event-grid')
-        print(f"✅ Encontradas {len(tarjetas)} tarjetas de eventos")
+        print(f"🎯 Encontradas {len(tarjetas)} tarjetas de eventos")
+        
+        if len(tarjetas) == 0:
+            print("⚠️ No se encontraron eventos con el selector 'a.event-grid'")
+            return []
         
         for idx, tarjeta in enumerate(tarjetas, 1):
             try:
@@ -171,7 +161,7 @@ def extraer_eventos_giglon() -> List[Dict]:
                 imagen_elem = tarjeta.select_one('img')
                 
                 if not titulo_elem or not descripcion_elem:
-                    print(f"⚠️ Evento {idx}: Faltan datos básicos, saltando...")
+                    print(f"⚠️ Evento {idx}: Faltan datos básicos")
                     continue
                 
                 # Limpiar datos
@@ -182,7 +172,7 @@ def extraer_eventos_giglon() -> List[Dict]:
                 # Parsear fecha
                 fecha_datos = parsear_fecha_giglon(descripcion_completa)
                 if not fecha_datos:
-                    print(f"⚠️ Evento {idx} '{titulo}': No se pudo parsear la fecha")
+                    print(f"⚠️ Evento {idx} '{titulo}': Fecha inválida")
                     continue
                 
                 fecha_iso, fecha_mostrar = fecha_datos
@@ -205,7 +195,7 @@ def extraer_eventos_giglon() -> List[Dict]:
                 evento = {
                     "id": f"giglon_{idx}_{int(time.time())}",
                     "titulo": titulo,
-                    "descripcion": titulo,  # Giglon no tiene descripción larga
+                    "descripcion": titulo,
                     "fecha": fecha_iso,
                     "hora": "Por confirmar",
                     "lugar": lugar,
@@ -216,21 +206,176 @@ def extraer_eventos_giglon() -> List[Dict]:
                 }
                 
                 eventos.append(evento)
-                print(f"✅ Evento {idx}: {titulo} - {fecha_mostrar}")
+                print(f"✅ Evento {idx}: {titulo} ({fecha_mostrar})")
                 
             except Exception as e:
                 print(f"❌ Error procesando evento {idx}: {e}")
                 continue
         
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error de conexión: {e}")
+        return []
     except Exception as e:
-        print(f"❌ Error en Giglon: {e}")
+        print(f"❌ Error inesperado: {e}")
+        return []
+    
+    print(f"\n📊 Giglon (requests): {len(eventos)} eventos extraídos")
+    return eventos
+
+# ==============================================================================
+# MÉTODO 2: EXTRACTOR CON SELENIUM (FALLBACK)
+# ==============================================================================
+
+def extraer_eventos_giglon_selenium() -> List[Dict]:
+    """Extrae eventos de Giglon usando Selenium (fallback)."""
+    print("\n🔍 Método 2 (fallback): Extrayendo de GIGLON con Selenium...")
+    
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        from webdriver_manager.chrome import ChromeDriverManager
+    except ImportError:
+        print("❌ Selenium no disponible")
+        return []
+    
+    eventos = []
+    driver = None
+    
+    try:
+        # Configurar Chrome con anti-detección
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
+        # Ocultar que somos un bot
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        print("🌐 Cargando Giglon...")
+        driver.get(URL_GIGLON)
+        
+        # Esperar más tiempo
+        print("⏳ Esperando carga de eventos (20s)...")
+        time.sleep(5)  # Espera inicial
+        
+        # Intentar esperar por los elementos
+        try:
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a.event-grid"))
+            )
+        except:
+            print("⚠️ Timeout esperando eventos")
+        
+        # Scroll gradual (simular humano)
+        print("📜 Simulando scroll...")
+        for _ in range(3):
+            driver.execute_script("window.scrollBy(0, 300);")
+            time.sleep(random.uniform(0.5, 1.5))
+        
+        time.sleep(3)
+        
+        # Parsear con BeautifulSoup
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        tarjetas = soup.select('a.event-grid')
+        
+        print(f"🎯 Encontradas {len(tarjetas)} tarjetas")
+        
+        # Procesar eventos (mismo código que método 1)
+        for idx, tarjeta in enumerate(tarjetas, 1):
+            try:
+                titulo_elem = tarjeta.select_one('span.name-list')
+                descripcion_elem = tarjeta.select_one('span.description-list')
+                precio_elem = tarjeta.select_one('span.price-list')
+                imagen_elem = tarjeta.select_one('img')
+                
+                if not titulo_elem or not descripcion_elem:
+                    continue
+                
+                titulo = limpiar_texto(titulo_elem.get_text())
+                descripcion_completa = limpiar_texto(descripcion_elem.get_text())
+                precio = limpiar_texto(precio_elem.get_text()) if precio_elem else "Consultar precio"
+                
+                fecha_datos = parsear_fecha_giglon(descripcion_completa)
+                if not fecha_datos:
+                    continue
+                
+                fecha_iso, fecha_mostrar = fecha_datos
+                lugar = extraer_lugar_giglon(descripcion_completa)
+                
+                href = tarjeta.get('href', '')
+                url_evento = f"https://www.giglon.com{href}" if href.startswith('/') else href
+                
+                url_imagen = ""
+                if imagen_elem:
+                    src = imagen_elem.get('src', '')
+                    if src:
+                        url_imagen = f"https://www.giglon.com{src}" if src.startswith('/') else src
+                
+                evento = {
+                    "id": f"giglon_{idx}_{int(time.time())}",
+                    "titulo": titulo,
+                    "descripcion": titulo,
+                    "fecha": fecha_iso,
+                    "hora": "Por confirmar",
+                    "lugar": lugar,
+                    "precio": precio,
+                    "categoria": categorizar_evento(titulo, titulo),
+                    "urlEvento": url_evento,
+                    "urlImagen": url_imagen
+                }
+                
+                eventos.append(evento)
+                print(f"✅ Evento {idx}: {titulo}")
+                
+            except Exception as e:
+                print(f"❌ Error en evento {idx}: {e}")
+                continue
+        
+    except Exception as e:
+        print(f"❌ Error en Selenium: {e}")
     
     finally:
         if driver:
             driver.quit()
     
-    print(f"\n📊 Giglon: {len(eventos)} eventos extraídos")
+    print(f"\n📊 Giglon (Selenium): {len(eventos)} eventos extraídos")
     return eventos
+
+# ==============================================================================
+# FUNCIÓN PRINCIPAL DE EXTRACCIÓN DE GIGLON
+# ==============================================================================
+
+def extraer_eventos_giglon() -> List[Dict]:
+    """Intenta extraer eventos con requests primero, luego Selenium."""
+    
+    # Método 1: Requests (más rápido)
+    eventos = extraer_eventos_giglon_requests()
+    
+    if len(eventos) > 0:
+        print("✅ Método 1 (requests) exitoso")
+        return eventos
+    
+    # Método 2: Selenium (fallback)
+    print("\n⚠️ Método 1 no encontró eventos, intentando con Selenium...")
+    eventos = extraer_eventos_giglon_selenium()
+    
+    if len(eventos) > 0:
+        print("✅ Método 2 (Selenium) exitoso")
+        return eventos
+    
+    print("❌ Ambos métodos fallaron")
+    return []
 
 # ==============================================================================
 # EXTRACTOR DE LA TINTA DE ALMANSA (RSS)
@@ -242,7 +387,7 @@ def extraer_eventos_la_tinta() -> List[Dict]:
     eventos = []
     
     try:
-        response = requests.get(URL_LA_TINTA_RSS, timeout=10)
+        response = requests.get(URL_LA_TINTA_RSS, headers=HEADERS, timeout=10)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'xml')
@@ -352,7 +497,7 @@ def guardar_json(eventos: List[Dict], archivo: str):
 
 def main():
     print("="*70)
-    print("🎭 EXTRACTOR DE EVENTOS DE ALMANSA")
+    print("🎭 EXTRACTOR DE EVENTOS DE ALMANSA v2.0")
     print("="*70)
     
     # Extraer de Giglon
@@ -371,8 +516,9 @@ def main():
     print(f"✅ COMPLETADO: {len(eventos_unicos)} eventos en {ARCHIVO_SALIDA}")
     print("="*70)
     
-    # Siempre salir con código 0 (éxito), incluso si no hay eventos
+    # Siempre salir con código 0 (éxito)
     sys.exit(0)
 
 if __name__ == "__main__":
     main()
+

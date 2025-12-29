@@ -1,7 +1,20 @@
 [
   {
-    "id": "evt_94406ee9cacd",
-    "titulo": "INCREIBLE PANDO-EL MAGO en 21",
+    "id": "evt_24808c052d4a",
+    "titulo": "EL CAUTIVO-CINE PARA ADULTOS en ALBACETE",
+    "descripcion": "Domingo - Teatro Principal",
+    "fecha": "2026-01-04",
+    "hora": "20:00",
+    "lugar": "Teatro Principal",
+    "categoria": "CINE",
+    "precio": "Ver en taquilla",
+    "urlCompra": "https://www.tomaticket.es/es-es/entradas-el-cautivo-cine-para-adultos-en-albacete",
+    "esGratuito": false,
+    "fuente": "TomaTicket"
+  },
+  {
+    "id": "evt_a47f189a5898",
+    "titulo": "INCREIBLE PANDO-EL MAGO",
     "descripcion": "Sábado - Teatro Regio",
     "fecha": "2026-02-14",
     "hora": "20:00",
@@ -13,8 +26,8 @@
     "fuente": "TomaTicket"
   },
   {
-    "id": "evt_1cb862b0dd54",
-    "titulo": "IDOLS-LA REVOLUCIÓN K-POP - LAS GUERRERAS DEL RITMO en 21",
+    "id": "evt_e4a001bfb433",
+    "titulo": "IDOLS-LA REVOLUCIÓN K-POP - LAS GUERRERAS DEL RITMO",
     "descripcion": "Viernes - Teatro Regio",
     "fecha": "2026-05-22",
     "hora": "20:00",

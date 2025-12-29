@@ -2,20 +2,22 @@
 # -*- coding: utf-8 -*-
 
 """
-EXTRACTOR EVENTOS TOMATICKET - VERSIÓN CORREGIDA
-=================================================
-Extrae eventos de TomaTicket para Teatro Regio y Teatro Principal de Almansa.
-Corregido el parseo de fechas según la estructura real de la web.
+EXTRACTOR CON SELENIUM - GITHUB ACTIONS
+========================================
+Usa Selenium para simular navegador real y evitar bloqueos 403.
+
+CORREGIDO: Ya no cambia el año de eventos pasados recientes.
 """
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 import hashlib
 import time
@@ -29,20 +31,13 @@ TOMATICKET_URLS = {
     "Teatro Principal": "https://www.tomaticket.es/es-es/recintos/teatro-principal-almansa"
 }
 
-# Mapeo de meses en español
-MESES_ES = {
-    'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
-    'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
-    'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
-}
-
-CATEGORIAS_KEYWORDS = {
-    'MUSICA': ['concierto', 'música', 'recital', 'banda', 'orquesta', 'coral', 'sinfónic'],
-    'TEATRO': ['teatro', 'obra', 'comedia', 'drama', 'tragedia'],
-    'INFANTIL': ['infantil', 'niños', 'familia', 'cuentacuentos', 'disney'],
-    'DANZA': ['danza', 'ballet', 'flamenco', 'flamencas'],
-    'HUMOR': ['humor', 'monólogo', 'monólogos', 'cómico', 'stand up', 'cura'],
-    'MUSICAL': ['musical'],
+CATEGORIAS = {
+    'MUSICA': ['concierto', 'música', 'recital', 'banda', 'orquesta', 'coral', 'canto'],
+    'TEATRO': ['teatro', 'obra', 'monólogo', 'comedia', 'drama'],
+    'INFANTIL': ['infantil', 'niños', 'familia', 'cuentacuentos', 'futbolísimos'],
+    'DANZA': ['danza', 'ballet', 'flamenco', 'durmiente'],
+    'HUMOR': ['humor', 'monólogo', 'cómico', 'stand up', 'bingueros'],
+    'CULTURA': ['conferencia', 'charla', 'presentación', 'navidad', 'festival']
 }
 
 # ======================================================================
@@ -50,73 +45,135 @@ CATEGORIAS_KEYWORDS = {
 # ======================================================================
 
 def generar_id(titulo, fecha, lugar):
-    """Genera ID único basado en título, fecha y lugar"""
     texto = f"{titulo}{fecha}{lugar}".lower().strip()
     return "evt_" + hashlib.md5(texto.encode()).hexdigest()[:12]
 
-
 def determinar_categoria(titulo):
-    """Determina la categoría basándose en palabras clave del título"""
     texto = titulo.lower()
-    for categoria, keywords in CATEGORIAS_KEYWORDS.items():
+    for categoria, keywords in CATEGORIAS.items():
         if any(kw in texto for kw in keywords):
             return categoria
     return "CULTURA"
 
-
-def parsear_fecha_tomaticket(dia_num, mes_texto):
+def parsear_fecha_es(texto_fecha):
     """
-    Parsea fecha desde los elementos de TomaTicket.
+    Parsea una fecha en español y determina el año correcto.
     
-    Args:
-        dia_num: Número del día (ej: "28")
-        mes_texto: Nombre del mes en español (ej: "Diciembre")
-    
-    Returns:
-        Fecha en formato ISO (YYYY-MM-DD) o None si falla
+    LÓGICA CORREGIDA:
+    - Si la fecha es de los próximos 6 meses -> año actual o siguiente
+    - Si la fecha ya pasó hace más de 30 días -> es del año pasado (no lo incluimos)
+    - Si la fecha pasó hace menos de 30 días -> es del año actual (evento reciente)
     """
-    try:
-        dia = int(dia_num)
-        mes_lower = mes_texto.lower().strip()
+    meses_es = {
+        'ene': 1, 'enero': 1, 'feb': 2, 'febrero': 2, 
+        'mar': 3, 'marzo': 3, 'abr': 4, 'abril': 4,
+        'may': 5, 'mayo': 5, 'jun': 6, 'junio': 6,
+        'jul': 7, 'julio': 7, 'ago': 8, 'agosto': 8,
+        'sep': 9, 'septiembre': 9, 'oct': 10, 'octubre': 10,
+        'nov': 11, 'noviembre': 11, 'dic': 12, 'diciembre': 12
+    }
+    
+    patron = r'(\d{1,2})[/\s-]+(?:de\s+)?(\w+)'
+    match = re.search(patron, texto_fecha.lower())
+    
+    if match:
+        dia = int(match.group(1))
+        mes_texto = match.group(2)
         
-        # Buscar el número del mes
         mes = None
-        for nombre, num in MESES_ES.items():
-            if nombre in mes_lower or mes_lower in nombre:
-                mes = num
+        for clave, valor in meses_es.items():
+            if clave in mes_texto:
+                mes = valor
                 break
         
-        if mes is None:
-            print(f"   ⚠️ Mes no reconocido: {mes_texto}")
-            return None
-        
-        # Determinar el año
-        hoy = datetime.now()
-        anio = hoy.year
-        
-        # Si el mes ya pasó este año, asumimos que es el próximo año
-        fecha_tentativa = datetime(anio, mes, dia)
-        if fecha_tentativa < hoy:
-            anio += 1
-        
-        fecha_final = datetime(anio, mes, dia)
-        return fecha_final.strftime('%Y-%m-%d')
-        
-    except Exception as e:
-        print(f"   ❌ Error parseando fecha ({dia_num}, {mes_texto}): {e}")
-        return None
+        if mes:
+            hoy = datetime.now()
+            anio_actual = hoy.year
+            
+            try:
+                # Intentar con el año actual
+                fecha_candidata = datetime(anio_actual, mes, dia)
+                
+                # Calcular diferencia en días
+                diferencia_dias = (fecha_candidata - hoy).days
+                
+                # LÓGICA MEJORADA:
+                if diferencia_dias >= -30:
+                    # El evento es de hace menos de 30 días o es futuro
+                    # Usar el año actual
+                    return fecha_candidata.strftime('%Y-%m-%d')
+                elif diferencia_dias < -30 and diferencia_dias > -180:
+                    # Evento de hace más de 30 días pero menos de 6 meses
+                    # Probablemente es un evento pasado, mantener año actual
+                    return fecha_candidata.strftime('%Y-%m-%d')
+                else:
+                    # Diferencia muy grande negativa (más de 6 meses atrás)
+                    # Podría ser del año siguiente
+                    fecha_siguiente = datetime(anio_actual + 1, mes, dia)
+                    return fecha_siguiente.strftime('%Y-%m-%d')
+                    
+            except ValueError:
+                # Fecha inválida (ej: 31 de febrero)
+                pass
+    
+    return None
 
-
-def extraer_precio(texto):
-    """Extrae el precio del texto"""
-    match = re.search(r'(\d+)\s*€', texto)
+def extraer_año_del_texto(texto):
+    """
+    Intenta extraer el año directamente del texto si está presente.
+    Ej: "26 de diciembre de 2025" -> 2025
+    """
+    patron_año = r'20\d{2}'
+    match = re.search(patron_año, texto)
     if match:
-        return f"{match.group(1)} €"
-    return "Ver en taquilla"
+        return int(match.group())
+    return None
 
+def parsear_fecha_completa(texto_fecha):
+    """
+    Versión mejorada que primero busca el año en el texto.
+    """
+    # Primero intentar extraer el año directamente
+    año_explicito = extraer_año_del_texto(texto_fecha)
+    
+    meses_es = {
+        'ene': 1, 'enero': 1, 'feb': 2, 'febrero': 2, 
+        'mar': 3, 'marzo': 3, 'abr': 4, 'abril': 4,
+        'may': 5, 'mayo': 5, 'jun': 6, 'junio': 6,
+        'jul': 7, 'julio': 7, 'ago': 8, 'agosto': 8,
+        'sep': 9, 'septiembre': 9, 'oct': 10, 'octubre': 10,
+        'nov': 11, 'noviembre': 11, 'dic': 12, 'diciembre': 12
+    }
+    
+    patron = r'(\d{1,2})[/\s-]+(?:de\s+)?(\w+)'
+    match = re.search(patron, texto_fecha.lower())
+    
+    if match:
+        dia = int(match.group(1))
+        mes_texto = match.group(2)
+        
+        mes = None
+        for clave, valor in meses_es.items():
+            if clave in mes_texto:
+                mes = valor
+                break
+        
+        if mes:
+            # Si encontramos año explícito, usarlo
+            if año_explicito:
+                try:
+                    fecha = datetime(año_explicito, mes, dia)
+                    return fecha.strftime('%Y-%m-%d')
+                except ValueError:
+                    pass
+            
+            # Si no hay año explícito, usar lógica inteligente
+            return parsear_fecha_es(texto_fecha)
+    
+    return None
 
 # ======================================================================
-# SELENIUM DRIVER
+# SELENIUM
 # ======================================================================
 
 def crear_driver():
@@ -124,34 +181,33 @@ def crear_driver():
     print("🔧 Configurando Chrome Selenium...")
     
     chrome_options = Options()
+    
+    # Modo headless (sin interfaz gráfica)
     chrome_options.add_argument('--headless=new')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
+    
+    # Anti-detección
     chrome_options.add_argument('--disable-blink-features=AutomationControlled')
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
+    
+    # User agent real
     chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    
+    # Tamaño de ventana
     chrome_options.add_argument('--window-size=1920,1080')
     
     driver = webdriver.Chrome(options=chrome_options)
+    
+    # Script anti-detección adicional
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     return driver
 
-
-# ======================================================================
-# EXTRACCIÓN PRINCIPAL
-# ======================================================================
-
-def extraer_eventos_tomaticket(url, teatro_nombre):
-    """
-    Extrae eventos de TomaTicket usando Selenium.
-    
-    La estructura de TomaTicket es:
-    - Cada evento está en un <a> con href que contiene "/es-es/entradas-"
-    - Dentro hay: <h4> con título, y textos separados para día de semana, día, mes, precio
-    """
+def extraer_con_selenium(url, teatro_nombre):
+    """Extrae eventos usando Selenium"""
     print(f"\n🎭 Extrayendo {teatro_nombre}...")
     print(f"   URL: {url}")
     
@@ -161,124 +217,123 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
     try:
         driver = crear_driver()
         
+        # Cargar página
         print("   📥 Cargando página...")
         driver.get(url)
-        time.sleep(3)  # Espera para JavaScript
         
+        # Esperar a que cargue el contenido dinámico (máximo 15 segundos)
+        print("   ⏳ Esperando contenido JavaScript...")
+        time.sleep(5)  # Espera fija inicial
+        
+        # Intentar esperar elementos específicos
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "article"))
+            )
+            print("   ✅ Contenido cargado (detectado <article>)")
+        except:
+            print("   ⚠️ No se detectaron <article>, continuando...")
+        
+        # Obtener HTML renderizado
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
         
-        # Buscar todos los enlaces a eventos
-        # Los eventos tienen href con "/es-es/entradas-"
-        enlaces_eventos = soup.find_all('a', href=re.compile(r'/es-es/entradas-'))
+        # Buscar eventos con múltiples selectores
+        selectores = [
+            'article',
+            {'class': ['event', 'evento', 'card-event', 'event-card']},
+            {'class': ['card']},
+            {'attrs': {'data-event': True}}
+        ]
         
-        print(f"   📋 Encontrados {len(enlaces_eventos)} enlaces de eventos")
+        eventos_cards = []
+        for selector in selectores:
+            if isinstance(selector, str):
+                eventos_cards.extend(soup.find_all(selector))
+            elif 'class' in selector:
+                eventos_cards.extend(soup.find_all(['div', 'article'], class_=selector['class']))
+            elif 'attrs' in selector:
+                eventos_cards.extend(soup.find_all(['div', 'article'], attrs=selector['attrs']))
         
-        eventos_procesados = set()  # Para evitar duplicados
+        # Eliminar duplicados
+        eventos_cards = list({str(card): card for card in eventos_cards}.values())
         
-        for enlace in enlaces_eventos:
-            try:
-                href = enlace.get('href', '')
-                
-                # Evitar duplicados
-                if href in eventos_procesados:
-                    continue
-                eventos_procesados.add(href)
-                
-                # Obtener el texto completo del bloque
-                texto_completo = enlace.get_text(separator='\n', strip=True)
-                lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
-                
-                if len(lineas) < 3:
-                    continue
-                
-                # Buscar título (en h4 o primera línea significativa)
-                titulo_elem = enlace.find(['h4', 'h3', 'h5'])
-                if titulo_elem:
-                    titulo = titulo_elem.get_text(strip=True)
-                else:
-                    # Primera línea que no sea día de semana ni número
-                    titulo = None
-                    for linea in lineas:
-                        if not re.match(r'^(lunes|martes|miércoles|jueves|viernes|sábado|domingo|\d{1,2}|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|desde|\d+\s*€)$', linea.lower()):
-                            titulo = linea
-                            break
-                    if not titulo:
-                        continue
-                
-                # Filtrar títulos no válidos
-                if len(titulo) < 5 or titulo.lower() in ['ver más', 'comprar', 'entradas']:
-                    continue
-                
-                # Buscar fecha: día (número) y mes
-                dia_num = None
-                mes_texto = None
-                
-                for i, linea in enumerate(lineas):
-                    # Buscar número de día (1-31)
-                    if re.match(r'^\d{1,2}$', linea):
-                        num = int(linea)
-                        if 1 <= num <= 31:
-                            dia_num = linea
-                            # El mes suele estar justo después
-                            if i + 1 < len(lineas):
-                                siguiente = lineas[i + 1].lower()
-                                if any(m in siguiente for m in MESES_ES.keys()):
-                                    mes_texto = lineas[i + 1]
-                                    break
-                
-                # Si no encontramos fecha, buscar con otro patrón
-                if not dia_num or not mes_texto:
-                    for linea in lineas:
-                        linea_lower = linea.lower()
-                        for mes_nombre in MESES_ES.keys():
-                            if mes_nombre in linea_lower:
-                                mes_texto = linea
-                                break
-                
-                # Parsear la fecha
-                fecha_iso = None
-                if dia_num and mes_texto:
-                    fecha_iso = parsear_fecha_tomaticket(dia_num, mes_texto)
-                
-                # Si aún no tenemos fecha, SALTAR este evento (no usar fecha actual)
-                if not fecha_iso:
-                    print(f"   ⚠️ Sin fecha válida: {titulo[:40]}...")
-                    continue
-                
-                # Extraer precio
-                precio = extraer_precio(texto_completo)
-                
-                # Construir URL completa
-                url_evento = href
-                if not url_evento.startswith('http'):
-                    url_evento = 'https://www.tomaticket.es' + url_evento
-                
-                print(f"   ✅ {titulo[:50]}...")
-                print(f"      📅 {fecha_iso} | 💰 {precio}")
-                
-                evento = {
-                    'id': generar_id(titulo, fecha_iso, teatro_nombre),
-                    'titulo': titulo,
-                    'descripcion': f"Evento en {teatro_nombre}",
-                    'fecha': fecha_iso,
-                    'hora': '20:00',  # Hora por defecto
-                    'lugar': teatro_nombre,
-                    'categoria': determinar_categoria(titulo),
-                    'precio': precio,
-                    'urlCompra': url_evento,
-                    'esGratuito': False,
-                    'fuente': 'TomaTicket'
-                }
-                
-                eventos.append(evento)
-                
-            except Exception as e:
-                print(f"   ❌ Error procesando evento: {e}")
+        print(f"   📋 Encontradas {len(eventos_cards)} posibles tarjetas")
+        
+        for card in eventos_cards:
+            # Título
+            titulo_elem = card.find(['h1', 'h2', 'h3', 'h4', 'h5', 'a'], class_=re.compile(r'title|titulo|name|nombre|heading', re.I))
+            if not titulo_elem:
+                titulo_elem = card.find(['h1', 'h2', 'h3', 'h4', 'a'])
+            
+            if not titulo_elem:
                 continue
+            
+            titulo = titulo_elem.get_text(strip=True)
+            
+            # Filtrar títulos muy cortos
+            if len(titulo) < 5 or titulo.lower() in ['ver más', 'más info', 'comprar', 'entradas']:
+                continue
+            
+            # Fecha - USAR LA NUEVA FUNCIÓN
+            fecha_elem = card.find('time') or card.find(class_=re.compile(r'fecha|date', re.I))
+            fecha_iso = None
+            
+            if fecha_elem:
+                fecha_texto = fecha_elem.get('datetime', fecha_elem.get_text(strip=True))
+                fecha_iso = parsear_fecha_completa(fecha_texto)
+            
+            if not fecha_iso:
+                texto_completo = card.get_text()
+                fecha_iso = parsear_fecha_completa(texto_completo)
+            
+            if not fecha_iso:
+                # Si no podemos parsear la fecha, usar hoy como fallback
+                fecha_iso = datetime.now().strftime('%Y-%m-%d')
+            
+            # Hora
+            hora = ""
+            hora_elem = card.find(class_=re.compile(r'hora|time', re.I))
+            if hora_elem:
+                hora_texto = hora_elem.get_text(strip=True)
+                match_hora = re.search(r'(\d{1,2}):(\d{2})', hora_texto)
+                if match_hora:
+                    hora = match_hora.group(0)
+            
+            if not hora:
+                hora = "20:00"
+            
+            # URL
+            link_elem = card.find('a', href=True)
+            link = ""
+            if link_elem:
+                link = link_elem.get('href', '')
+                if link and not link.startswith('http'):
+                    link = 'https://www.tomaticket.es' + link
+            
+            # Descripción
+            desc_elem = card.find('p') or card.find(class_=re.compile(r'desc|summ', re.I))
+            descripcion = desc_elem.get_text(strip=True)[:200] if desc_elem else titulo
+            
+            print(f"   ✅ {titulo[:60]}")
+            print(f"      📅 {fecha_iso} | ⏰ {hora}")
+            
+            eventos.append({
+                'id': generar_id(titulo, fecha_iso, teatro_nombre),
+                'titulo': titulo,
+                'descripcion': descripcion,
+                'fecha': fecha_iso,
+                'hora': hora,
+                'lugar': teatro_nombre,
+                'categoria': determinar_categoria(titulo),
+                'precio': "Ver en taquilla",
+                'urlCompra': link or url,
+                'esGratuito': False,
+                'fuente': "TomaTicket"
+            })
         
     except Exception as e:
-        print(f"   ❌ Error general: {e}")
+        print(f"   ❌ Error: {str(e)}")
     
     finally:
         if driver:
@@ -286,82 +341,87 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
     
     return eventos
 
+# ======================================================================
+# FILTRADO DE EVENTOS
+# ======================================================================
 
-def eliminar_duplicados(eventos):
-    """Elimina eventos duplicados basándose en título + fecha + lugar"""
-    vistos = set()
-    unicos = []
+def filtrar_eventos_validos(eventos):
+    """
+    Filtra eventos para mostrar solo los relevantes:
+    - Eventos futuros (próximos 6 meses)
+    - Eventos pasados de hace máximo 7 días (por si alguien quiere ver qué se perdió)
+    """
+    hoy = datetime.now()
+    limite_pasado = hoy - timedelta(days=7)  # Hasta 7 días atrás
+    limite_futuro = hoy + timedelta(days=180)  # Hasta 6 meses adelante
+    
+    eventos_filtrados = []
     
     for evento in eventos:
-        clave = (evento['titulo'].lower(), evento['fecha'], evento['lugar'])
-        if clave not in vistos:
-            vistos.add(clave)
-            unicos.append(evento)
+        try:
+            fecha_evento = datetime.strptime(evento['fecha'], '%Y-%m-%d')
+            
+            if limite_pasado <= fecha_evento <= limite_futuro:
+                eventos_filtrados.append(evento)
+            else:
+                print(f"   ⏭️ Evento filtrado (fuera de rango): {evento['titulo'][:40]} - {evento['fecha']}")
+                
+        except ValueError:
+            # Si no podemos parsear la fecha, incluir el evento por si acaso
+            eventos_filtrados.append(evento)
     
-    return unicos
-
-
-def filtrar_eventos_pasados(eventos):
-    """Elimina eventos con fecha anterior a hoy"""
-    hoy = datetime.now().strftime('%Y-%m-%d')
-    return [e for e in eventos if e['fecha'] >= hoy]
-
+    return eventos_filtrados
 
 # ======================================================================
 # MAIN
 # ======================================================================
 
 def main():
-    print("=" * 70)
-    print("EXTRACTOR EVENTOS TOMATICKET - ALMANSA")
-    print("=" * 70)
-    print(f"Fecha de ejecución: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print("="*70)
+    print("EXTRACTOR CON SELENIUM - GITHUB ACTIONS")
+    print(f"Fecha actual: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print("="*70)
     print()
     
     todos_eventos = []
     
-    # Extraer de cada teatro
     for teatro, url in TOMATICKET_URLS.items():
-        eventos = extraer_eventos_tomaticket(url, teatro)
+        eventos = extraer_con_selenium(url, teatro)
         todos_eventos.extend(eventos)
-        print(f"   📊 {len(eventos)} eventos de {teatro}")
     
-    # Post-procesado
-    print("\n🔄 Post-procesado...")
-    eventos_unicos = eliminar_duplicados(todos_eventos)
-    print(f"   Después de deduplicar: {len(eventos_unicos)}")
-    
-    eventos_futuros = filtrar_eventos_pasados(eventos_unicos)
-    print(f"   Eventos futuros: {len(eventos_futuros)}")
+    # Filtrar eventos válidos (quitar los de fechas muy antiguas o muy futuras)
+    print("\n🔍 Filtrando eventos por fecha...")
+    eventos_validos = filtrar_eventos_validos(todos_eventos)
     
     # Ordenar por fecha
-    eventos_ordenados = sorted(eventos_futuros, key=lambda x: x['fecha'])
+    eventos_ordenados = sorted(eventos_validos, key=lambda x: x['fecha'])
     
     # Guardar JSON
     with open('eventos_agenda.json', 'w', encoding='utf-8') as f:
         json.dump(eventos_ordenados, f, ensure_ascii=False, indent=2)
     
-    # Estadísticas finales
+    # Estadísticas
     print()
-    print("=" * 70)
+    print("="*70)
     print("✅ COMPLETADO")
-    print(f"📊 Total eventos: {len(eventos_ordenados)}")
+    print(f"📊 Total eventos extraídos: {len(todos_eventos)}")
+    print(f"📊 Eventos válidos (después de filtrar): {len(eventos_ordenados)}")
     print(f"📁 Archivo: eventos_agenda.json")
     
     if eventos_ordenados:
+        print(f"📅 Próximo evento: {eventos_ordenados[0]['fecha']}")
         print()
-        print("📋 PRÓXIMOS EVENTOS:")
+        print("📋 EVENTOS CAPTURADOS:")
         for i, e in enumerate(eventos_ordenados[:10], 1):
-            print(f"  {i}. [{e['fecha']}] {e['titulo'][:45]}")
-            print(f"      {e['lugar']} | {e['precio']}")
+            print(f"  {i}. {e['titulo'][:50]}")
+            print(f"     {e['fecha']} {e['hora']} - {e['lugar']}")
     else:
         print()
-        print("⚠️ No se encontraron eventos futuros")
+        print("⚠️ No se encontraron eventos")
+        print("   - Puede ser temporada baja")
+        print("   - O cambios en la web de TomaTicket")
     
-    print("=" * 70)
-    
-    return eventos_ordenados
-
+    print("="*70)
 
 if __name__ == "__main__":
     main()

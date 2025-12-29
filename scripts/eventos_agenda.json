@@ -117,19 +117,6 @@
     "fuente": "TomaTicket"
   },
   {
-    "id": "evt_bf6a4a6544ed",
-    "titulo": "EL HUMOR TODO LO-CURA- II EDICION en 21",
-    "descripcion": "Evento en Teatro Regio",
-    "fecha": "2026-11-27",
-    "hora": "20:00",
-    "lugar": "Teatro Regio",
-    "categoria": "HUMOR",
-    "precio": "Ver en taquilla",
-    "urlCompra": "https://www.tomaticket.es/es-es/entradas-el-humor-todo-lo-cura-ii-edicion-en-21",
-    "esGratuito": false,
-    "fuente": "TomaTicket"
-  },
-  {
     "id": "evt_533ceb982cc1",
     "titulo": "The Tenors dreams en ALBACETE",
     "descripcion": "Evento en Teatro Principal",
@@ -293,7 +280,7 @@
     "hora": "20:00",
     "lugar": "Teatro Regio",
     "categoria": "CULTURA",
-    "precio": "18 €",
+    "precio": "Ver en taquilla",
     "urlCompra": "https://www.tomaticket.es/es-es/entradas-isabel-aaiun-gira-potra-salvaje-en-21",
     "esGratuito": false,
     "fuente": "TomaTicket"

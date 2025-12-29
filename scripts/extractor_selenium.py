@@ -51,35 +51,42 @@ CATEGORIAS = {
 # FILTRO DE UBICACIÓN - Solo eventos de Almansa
 # ======================================================================
 
+# Ciudades que NO son Almansa (descartamos eventos de estas)
 CIUDADES_EXCLUIDAS = [
     'jaén', 'jaen', 'murcia', 'valencia', 'madrid', 'barcelona',
     'alicante', 'cuenca', 'toledo', 'ciudad real', 'guadalajara',
-    'villanueva', 'hellín', 'hellin', 'la roda', 'villarrobledo',
-    'albacete capital'
+    'villanueva', 'hellín', 'hellin', 'la roda', 'villarrobledo'
 ]
 
-def es_evento_almansa(titulo, lugar):
+def es_evento_almansa(titulo, teatro_nombre):
     """
     Verifica si el evento es realmente de Almansa.
-    Descarta eventos de otras ciudades que aparecen en TomaTicket.
-    """
-    texto = f"{titulo} {lugar}".lower()
     
-    # Si menciona explícitamente otra ciudad, descartar
+    IMPORTANTE: Los teatros de Almansa (Teatro Regio y Teatro Principal)
+    están en la PROVINCIA de Albacete, por eso TomaTicket pone "en ALBACETE"
+    en muchos títulos. Pero SI el teatro es de Almansa, el evento ES de Almansa.
+    """
+    titulo_lower = titulo.lower()
+    
+    # Si menciona explícitamente otra ciudad (no Albacete), descartar
     for ciudad in CIUDADES_EXCLUIDAS:
-        if ciudad in texto:
-            # Excepción: si dice "en ALBACETE" pero el lugar es Teatro de Almansa
-            if ciudad == 'albacete' and 'almansa' in lugar.lower():
-                continue
+        if ciudad in titulo_lower:
+            print(f"      🔍 Detectada ciudad excluida: {ciudad}")
             return False
     
-    # Si el título tiene "en [CIUDAD]" y no es Almansa, descartar
-    match = re.search(r'\ben\s+([A-ZÁÉÍÓÚ][A-ZÁÉÍÓÚ]+)\b', titulo)
+    # Si el título dice "en JAÉN", "en MURCIA", etc. (mayúsculas = nombre de ciudad)
+    match = re.search(r'\ben\s+([A-ZÁÉÍÓÚÑ]{3,})\b', titulo)
     if match:
         ciudad_mencionada = match.group(1).lower()
-        if ciudad_mencionada != 'almansa' and ciudad_mencionada not in ['el', 'la', 'los', 'las']:
+        # Lista de ciudades a excluir cuando aparecen así
+        ciudades_patron = ['jaen', 'jaén', 'murcia', 'valencia', 'madrid', 
+                          'toledo', 'cuenca', 'alicante', 'barcelona']
+        if ciudad_mencionada in ciudades_patron:
+            print(f"      🔍 Detectado patrón 'en {ciudad_mencionada.upper()}'")
             return False
     
+    # "en ALBACETE" está OK porque los teatros de Almansa están en provincia de Albacete
+    # El evento es válido si llegó hasta aquí
     return True
 
 # ======================================================================
@@ -90,6 +97,20 @@ def generar_id(titulo, fecha, lugar):
     """Genera un ID único para el evento."""
     texto = f"{titulo}{fecha}{lugar}".lower().strip()
     return "evt_" + hashlib.md5(texto.encode()).hexdigest()[:12]
+
+def limpiar_titulo(titulo):
+    """
+    Limpia el título quitando basura como 'en 21', 'en 22', etc.
+    que TomaTicket añade al final de algunos títulos.
+    """
+    # Quitar patrones como "en 21", "en 22", "en ALBACETE" del final
+    titulo_limpio = re.sub(r'\s+en\s+\d+\s*$', '', titulo, flags=re.IGNORECASE)
+    titulo_limpio = re.sub(r'\s+en\s+21\s*$', '', titulo_limpio, flags=re.IGNORECASE)
+    
+    # Limpiar espacios extra
+    titulo_limpio = ' '.join(titulo_limpio.split())
+    
+    return titulo_limpio.strip()
 
 def determinar_categoria(titulo):
     """Determina la categoría basándose en el título."""
@@ -325,17 +346,20 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
                     print(f"   🚫 Ignorando (no es de Almansa): {titulo[:40]}")
                     continue
                 
-                print(f"   ✅ {titulo[:50]}")
+                # Limpiar el título (quitar "en 21" y basura similar)
+                titulo_limpio = limpiar_titulo(titulo)
+                
+                print(f"   ✅ {titulo_limpio[:50]}")
                 print(f"      📅 {fecha_iso} | 💰 {precio}")
                 
                 eventos.append({
-                    'id': generar_id(titulo, fecha_iso, teatro_nombre),
-                    'titulo': titulo,
+                    'id': generar_id(titulo_limpio, fecha_iso, teatro_nombre),
+                    'titulo': titulo_limpio,
                     'descripcion': f"{dia_semana or ''} - {teatro_nombre}".strip(' -'),
                     'fecha': fecha_iso,
                     'hora': "20:00",  # Hora por defecto
                     'lugar': teatro_nombre,
-                    'categoria': determinar_categoria(titulo),
+                    'categoria': determinar_categoria(titulo_limpio),
                     'precio': precio,
                     'urlCompra': url_evento or url,
                     'esGratuito': False,

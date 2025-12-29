@@ -48,6 +48,41 @@ CATEGORIAS = {
 }
 
 # ======================================================================
+# FILTRO DE UBICACIÓN - Solo eventos de Almansa
+# ======================================================================
+
+CIUDADES_EXCLUIDAS = [
+    'jaén', 'jaen', 'murcia', 'valencia', 'madrid', 'barcelona',
+    'alicante', 'cuenca', 'toledo', 'ciudad real', 'guadalajara',
+    'villanueva', 'hellín', 'hellin', 'la roda', 'villarrobledo',
+    'albacete capital'
+]
+
+def es_evento_almansa(titulo, lugar):
+    """
+    Verifica si el evento es realmente de Almansa.
+    Descarta eventos de otras ciudades que aparecen en TomaTicket.
+    """
+    texto = f"{titulo} {lugar}".lower()
+    
+    # Si menciona explícitamente otra ciudad, descartar
+    for ciudad in CIUDADES_EXCLUIDAS:
+        if ciudad in texto:
+            # Excepción: si dice "en ALBACETE" pero el lugar es Teatro de Almansa
+            if ciudad == 'albacete' and 'almansa' in lugar.lower():
+                continue
+            return False
+    
+    # Si el título tiene "en [CIUDAD]" y no es Almansa, descartar
+    match = re.search(r'\ben\s+([A-ZÁÉÍÓÚ][A-ZÁÉÍÓÚ]+)\b', titulo)
+    if match:
+        ciudad_mencionada = match.group(1).lower()
+        if ciudad_mencionada != 'almansa' and ciudad_mencionada not in ['el', 'la', 'los', 'las']:
+            return False
+    
+    return True
+
+# ======================================================================
 # UTILIDADES
 # ======================================================================
 
@@ -283,6 +318,11 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
                 hoy = datetime.now().strftime('%Y-%m-%d')
                 if fecha_iso < hoy:
                     print(f"   ⏭️ Ignorando evento pasado: {titulo[:40]} ({fecha_iso})")
+                    continue
+                
+                # Verificar si es evento de Almansa (filtrar otras ciudades)
+                if not es_evento_almansa(titulo, teatro_nombre):
+                    print(f"   🚫 Ignorando (no es de Almansa): {titulo[:40]}")
                     continue
                 
                 print(f"   ✅ {titulo[:50]}")

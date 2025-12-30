@@ -179,9 +179,50 @@ def obtener_eventos_existentes(hoja):
         print(f"⚠️ Error leyendo eventos existentes: {e}")
         return {}
 
+def limpiar_eventos_pasados(eventos_existentes, dias_gracia=3):
+    """
+    Elimina eventos que ya pasaron hace más de X días.
+    Mantiene eventos recientes por si alguien quiere verlos.
+    
+    Args:
+        eventos_existentes: diccionario {id: evento}
+        dias_gracia: días después del evento antes de borrarlo (default: 3)
+    
+    Returns:
+        diccionario con solo eventos vigentes
+    """
+    hoy = datetime.now()
+    fecha_limite = hoy - timedelta(days=dias_gracia)
+    
+    eventos_vigentes = {}
+    eventos_eliminados = 0
+    
+    for evento_id, evento in eventos_existentes.items():
+        fecha_str = evento.get('fecha', '')
+        
+        try:
+            fecha_evento = datetime.strptime(fecha_str, '%Y-%m-%d')
+            
+            if fecha_evento < fecha_limite:
+                # Evento pasado - no lo incluimos
+                eventos_eliminados += 1
+                print(f"   🗑️  Eliminando pasado: {evento.get('titulo', '')[:40]}... ({fecha_str})")
+            else:
+                # Evento vigente - lo mantenemos
+                eventos_vigentes[evento_id] = evento
+        except:
+            # Si no puede parsear fecha, lo mantiene por seguridad
+            eventos_vigentes[evento_id] = evento
+    
+    if eventos_eliminados > 0:
+        print(f"   📋 Eliminados {eventos_eliminados} eventos pasados")
+    
+    return eventos_vigentes
+
 def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
     """
     Escribe eventos en el Sheet:
+    - PRIMERO limpia eventos pasados (más de 3 días)
     - Mantiene eventos existentes (incluyendo ediciones manuales)
     - Añade solo los nuevos
     - Ordena TODO por fecha
@@ -189,6 +230,10 @@ def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
     """
     print(f"\n📝 Procesando {len(eventos_nuevos)} eventos extraídos...")
     print(f"📊 Eventos ya en Sheet: {len(eventos_existentes)}")
+    
+    # PASO 1: Limpiar eventos pasados de los existentes
+    print("\n🧹 Limpiando eventos pasados...")
+    eventos_existentes = limpiar_eventos_pasados(eventos_existentes, dias_gracia=3)
     
     # Combinar: existentes + nuevos (sin duplicados)
     todos_los_eventos = dict(eventos_existentes)  # Copiar existentes
@@ -262,7 +307,7 @@ def crear_driver():
     return driver
 
 def extraer_eventos_tomaticket(url, teatro_nombre):
-    """Extrae eventos de TomaTicket - SOLO próximos eventos, no los pasados"""
+    """Extrae eventos de TomaTicket - SOLO próximos eventos, ignora los pasados"""
     print(f"\n🎭 Extrayendo {teatro_nombre}...")
     eventos = []
     driver = None
@@ -275,20 +320,36 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
         
-        # Buscar SOLO la sección de "Próximos eventos"
-        seccion_proximos = None
+        # IMPORTANTE: Buscar SOLO la sección de "Próximos eventos"
+        # y EXCLUIR "Eventos anteriormente celebrados"
         
-        for elemento in soup.find_all(['h2', 'h3', 'div', 'section']):
+        seccion_proximos = None
+        seccion_pasados = None
+        
+        # Buscar todos los encabezados de sección
+        for elemento in soup.find_all(['h2', 'h3']):
             texto = elemento.get_text().lower()
+            
             if 'próximos' in texto or 'proximos' in texto:
+                # Encontrar el contenedor padre de esta sección
                 padre = elemento.find_parent(['section', 'div'])
                 if padre:
                     seccion_proximos = padre
-                    break
+                    
+            elif 'anteriormente' in texto or 'pasados' in texto or 'celebrados' in texto:
+                # Marcar sección de pasados para excluirla
+                padre = elemento.find_parent(['section', 'div'])
+                if padre:
+                    seccion_pasados = padre
         
-        # Si no encontramos sección específica, usar todo el documento
-        # pero filtraremos por fecha después
-        contenedor = seccion_proximos if seccion_proximos else soup
+        # Si encontramos sección de próximos, usar solo esa
+        if seccion_proximos:
+            contenedor = seccion_proximos
+            print(f"   📍 Encontrada sección 'Próximos eventos'")
+        else:
+            # Si no, usar todo pero filtrar más estrictamente
+            contenedor = soup
+            print(f"   ⚠️  No se encontró sección específica, usando filtro por fecha")
         
         # Buscar tarjetas de eventos
         cards = contenedor.find_all(['article', 'div'], class_=re.compile(r'event|card', re.I))
@@ -297,6 +358,17 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
         
         for card in cards:
             try:
+                # VERIFICAR que la tarjeta NO está en sección de pasados
+                if seccion_pasados:
+                    # Comprobar si esta tarjeta es descendiente de la sección de pasados
+                    es_pasado = False
+                    for parent in card.parents:
+                        if parent == seccion_pasados:
+                            es_pasado = True
+                            break
+                    if es_pasado:
+                        continue  # Saltar este evento
+                
                 # TÍTULO
                 titulo_elem = card.find(['h2', 'h3', 'h4', 'a'], class_=re.compile(r'title|titulo|name', re.I))
                 if not titulo_elem:
@@ -323,11 +395,11 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
                 if not fecha_iso:
                     continue
                 
-                # Filtrar eventos pasados (más de 1 día de antigüedad)
+                # FILTRO ADICIONAL: Si la fecha calculada está en el pasado, ignorar
                 try:
                     fecha_evento = datetime.strptime(fecha_iso, '%Y-%m-%d')
                     if fecha_evento < hoy - timedelta(days=1):
-                        print(f"   ⏭️  Pasado: {titulo[:35]}... ({fecha_iso})")
+                        # Este evento ya pasó - ignorar
                         continue
                 except:
                     pass

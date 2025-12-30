@@ -82,7 +82,12 @@ def limpiar_titulo(titulo):
     return resultado.strip()
 
 def parsear_fecha_es(texto_fecha):
-    """Parsea fechas en español - CORREGIDO para no poner 2026 en diciembre"""
+    """
+    Parsea fechas en español.
+    REGLA SIMPLE: 
+    - Si hay año explícito (2025, 2026), usarlo
+    - Si NO hay año: usar año actual EXCEPTO si es enero-junio y estamos en oct-dic
+    """
     meses_es = {
         'ene': 1, 'enero': 1, 'feb': 2, 'febrero': 2,
         'mar': 3, 'marzo': 3, 'abr': 4, 'abril': 4,
@@ -95,9 +100,9 @@ def parsear_fecha_es(texto_fecha):
 
     texto = texto_fecha.lower().strip()
     
-    # Primero buscar si hay año explícito (2025, 2026, etc)
-    anio_match = re.search(r'20(\d{2})', texto)
-    anio_explicito = int('20' + anio_match.group(1)) if anio_match else None
+    # Buscar año explícito (2025, 2026, etc)
+    anio_match = re.search(r'(20\d{2})', texto)
+    anio_explicito = int(anio_match.group(1)) if anio_match else None
 
     # Patrón: "26 dic", "26 de diciembre", "26/12"
     patron = r'(\d{1,2})[/\s\-]+(?:de\s+)?(\w+)'
@@ -119,19 +124,20 @@ def parsear_fecha_es(texto_fecha):
             mes = int(mes_texto)
 
         if mes and 1 <= dia <= 31:
-            # Si hay año explícito en el texto, usarlo
             if anio_explicito:
+                # Año explícito encontrado en el texto
                 anio = anio_explicito
             else:
-                # Sin año explícito: usar lógica conservadora
-                anio = datetime.now().year
+                # Sin año explícito: lógica conservadora
                 hoy = datetime.now()
+                anio = hoy.year
                 
-                # Solo poner año siguiente si el mes es claramente del futuro
-                # (ej: estamos en diciembre y el evento es de enero-junio)
-                if mes < hoy.month - 1:  # Más de 1 mes atrás = probablemente año siguiente
+                # Solo poner año siguiente si:
+                # - El evento es de enero-junio
+                # - Y estamos en octubre-diciembre
+                # (típico de programación teatral)
+                if mes <= 6 and hoy.month >= 10:
                     anio = hoy.year + 1
-                # Si estamos en el mismo mes o cerca, es de este año
             
             try:
                 fecha = datetime(anio, mes, dia)
@@ -182,39 +188,46 @@ def obtener_eventos_existentes(hoja):
         return {}
 
 def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
-    """Escribe eventos en el Sheet, respetando los manuales"""
-    print(f"📝 Procesando {len(eventos_nuevos)} eventos...")
-
-    # IDs de eventos que el usuario marcó como activo=FALSE (no tocar)
-    ids_desactivados = {id for id, e in eventos_existentes.items() 
-                        if str(e.get('activo', 'TRUE')).upper() == 'FALSE'}
-
-    # Preparar datos finales
-    eventos_finales = []
-
-    # 1. Mantener eventos existentes modificados manualmente
-    for id_evento, evento in eventos_existentes.items():
-        if id_evento in ids_desactivados:
-            # Mantener desactivados tal cual
-            eventos_finales.append(evento)
-
-    # 2. Añadir/actualizar eventos nuevos
+    """
+    AÑADE eventos nuevos SIN borrar los existentes.
+    - Mantiene todos los eventos que ya están en el Sheet
+    - Solo añade eventos con IDs que no existan
+    - NUNCA borra ni sobrescribe
+    """
+    print(f"📝 Procesando {len(eventos_nuevos)} eventos nuevos...")
+    print(f"📊 Eventos ya existentes en Sheet: {len(eventos_existentes)}")
+    
+    # IDs que ya existen en el Sheet
+    ids_existentes = set(eventos_existentes.keys())
+    
+    # Filtrar solo eventos REALMENTE nuevos (ID no existe)
+    eventos_a_añadir = []
     for evento in eventos_nuevos:
-        if evento['id'] not in ids_desactivados:
-            eventos_finales.append(evento)
-
-    # Ordenar por fecha
-    eventos_finales.sort(key=lambda x: x.get('fecha', '9999-99-99'))
-
-    # Limpiar y escribir
-    print(f"📤 Escribiendo {len(eventos_finales)} eventos en el Sheet...")
-
-    # Cabeceras
-    hoja.clear()
-    hoja.append_row(COLUMNAS)
-
-    # Datos
-    for evento in eventos_finales:
+        if evento['id'] not in ids_existentes:
+            eventos_a_añadir.append(evento)
+            print(f"   ➕ Nuevo: {evento['titulo'][:50]}...")
+        else:
+            print(f"   ⏭️ Ya existe: {evento['titulo'][:40]}...")
+    
+    if not eventos_a_añadir:
+        print("✅ No hay eventos nuevos que añadir")
+        return
+    
+    print(f"📤 Añadiendo {len(eventos_a_añadir)} eventos nuevos...")
+    
+    # Si el Sheet está vacío, añadir cabeceras primero
+    if len(eventos_existentes) == 0:
+        try:
+            # Verificar si hay cabeceras
+            primera_fila = hoja.row_values(1)
+            if not primera_fila or primera_fila[0] != 'id':
+                hoja.append_row(COLUMNAS)
+                print("   📋 Cabeceras añadidas")
+        except:
+            hoja.append_row(COLUMNAS)
+    
+    # AÑADIR (no sobrescribir) los eventos nuevos al final
+    for evento in eventos_a_añadir:
         fila = [
             evento.get('id', ''),
             evento.get('titulo', ''),
@@ -227,11 +240,11 @@ def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
             evento.get('urlCompra', ''),
             str(evento.get('esGratuito', False)).upper(),
             evento.get('fuente', ''),
-            str(evento.get('activo', True)).upper()
+            'TRUE'  # activo por defecto
         ]
         hoja.append_row(fila)
-
-    print(f"✅ {len(eventos_finales)} eventos escritos")
+    
+    print(f"✅ {len(eventos_a_añadir)} eventos añadidos (total en Sheet: {len(eventos_existentes) + len(eventos_a_añadir)})")
 
 # ======================================================================
 # SELENIUM - EXTRACCIÓN

@@ -30,8 +30,9 @@ import os
 # ID del Google Sheet (de la URL)
 SHEET_ID = "1Rp5I6vuVnRCcyv3fEfvhAz_dMheQ6-tMlobpSLKNEcE"
 
-# Nombre de la hoja dentro del Sheet
-NOMBRE_HOJA = "Hoja 1"  # Cambia si tu hoja se llama diferente
+# Nombre de la hoja dentro del Sheet (pestaña)
+# IMPORTANTE: Crea una pestaña nueva llamada "Eventos" en tu Sheet
+NOMBRE_HOJA = "Eventos"
 
 # URLs de TomaTicket
 TOMATICKET_URLS = {
@@ -81,7 +82,7 @@ def limpiar_titulo(titulo):
     return resultado.strip()
 
 def parsear_fecha_es(texto_fecha):
-    """Parsea fechas en español"""
+    """Parsea fechas en español - CORREGIDO para no poner 2026 en diciembre"""
     meses_es = {
         'ene': 1, 'enero': 1, 'feb': 2, 'febrero': 2,
         'mar': 3, 'marzo': 3, 'abr': 4, 'abril': 4,
@@ -93,6 +94,10 @@ def parsear_fecha_es(texto_fecha):
     }
 
     texto = texto_fecha.lower().strip()
+    
+    # Primero buscar si hay año explícito (2025, 2026, etc)
+    anio_match = re.search(r'20(\d{2})', texto)
+    anio_explicito = int('20' + anio_match.group(1)) if anio_match else None
 
     # Patrón: "26 dic", "26 de diciembre", "26/12"
     patron = r'(\d{1,2})[/\s\-]+(?:de\s+)?(\w+)'
@@ -114,12 +119,22 @@ def parsear_fecha_es(texto_fecha):
             mes = int(mes_texto)
 
         if mes and 1 <= dia <= 31:
-            anio = datetime.now().year
+            # Si hay año explícito en el texto, usarlo
+            if anio_explicito:
+                anio = anio_explicito
+            else:
+                # Sin año explícito: usar lógica conservadora
+                anio = datetime.now().year
+                hoy = datetime.now()
+                
+                # Solo poner año siguiente si el mes es claramente del futuro
+                # (ej: estamos en diciembre y el evento es de enero-junio)
+                if mes < hoy.month - 1:  # Más de 1 mes atrás = probablemente año siguiente
+                    anio = hoy.year + 1
+                # Si estamos en el mismo mes o cerca, es de este año
+            
             try:
                 fecha = datetime(anio, mes, dia)
-                # Si la fecha ya pasó, es del año siguiente
-                if fecha < datetime.now():
-                    fecha = datetime(anio + 1, mes, dia)
                 return fecha.strftime('%Y-%m-%d')
             except ValueError:
                 pass

@@ -190,9 +190,7 @@ def obtener_eventos_existentes(hoja):
 def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
     """
     AÑADE eventos nuevos SIN borrar los existentes.
-    - Mantiene todos los eventos que ya están en el Sheet
-    - Solo añade eventos con IDs que no existan
-    - NUNCA borra ni sobrescribe
+    Usa escritura en LOTE (batch) para evitar límites de API.
     """
     print(f"📝 Procesando {len(eventos_nuevos)} eventos nuevos...")
     print(f"📊 Eventos ya existentes en Sheet: {len(eventos_existentes)}")
@@ -215,18 +213,21 @@ def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
     
     print(f"📤 Añadiendo {len(eventos_a_añadir)} eventos nuevos...")
     
+    # Preparar todas las filas
+    filas_a_escribir = []
+    
     # Si el Sheet está vacío, añadir cabeceras primero
     if len(eventos_existentes) == 0:
         try:
-            # Verificar si hay cabeceras
             primera_fila = hoja.row_values(1)
             if not primera_fila or primera_fila[0] != 'id':
-                hoja.append_row(COLUMNAS)
-                print("   📋 Cabeceras añadidas")
+                filas_a_escribir.append(COLUMNAS)
+                print("   📋 Cabeceras incluidas")
         except:
-            hoja.append_row(COLUMNAS)
+            filas_a_escribir.append(COLUMNAS)
+            print("   📋 Cabeceras incluidas")
     
-    # AÑADIR (no sobrescribir) los eventos nuevos al final
+    # Preparar filas de eventos
     for evento in eventos_a_añadir:
         fila = [
             evento.get('id', ''),
@@ -242,9 +243,43 @@ def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
             evento.get('fuente', ''),
             'TRUE'  # activo por defecto
         ]
-        hoja.append_row(fila)
+        filas_a_escribir.append(fila)
     
-    print(f"✅ {len(eventos_a_añadir)} eventos añadidos (total en Sheet: {len(eventos_existentes) + len(eventos_a_añadir)})")
+    # ESCRIBIR TODO DE UNA VEZ (batch) - más fiable que append_row individual
+    try:
+        # Obtener la siguiente fila vacía
+        todas_las_filas = hoja.get_all_values()
+        siguiente_fila = len(todas_las_filas) + 1
+        
+        # Si está completamente vacío, empezar en fila 1
+        if siguiente_fila == 1 or (siguiente_fila == 2 and not todas_las_filas[0][0]):
+            siguiente_fila = 1
+        
+        # Calcular rango para escritura batch
+        num_filas = len(filas_a_escribir)
+        num_cols = len(COLUMNAS)
+        
+        # Usar update en batch (mucho más rápido y fiable)
+        rango = f"A{siguiente_fila}:{chr(64 + num_cols)}{siguiente_fila + num_filas - 1}"
+        print(f"   📍 Escribiendo en rango: {rango}")
+        
+        hoja.update(rango, filas_a_escribir)
+        
+        print(f"✅ {len(eventos_a_añadir)} eventos añadidos correctamente")
+        
+    except Exception as e:
+        print(f"❌ Error en escritura batch: {e}")
+        print("   🔄 Intentando escritura individual con delays...")
+        
+        # Plan B: escritura individual con delays
+        import time
+        for i, fila in enumerate(filas_a_escribir):
+            try:
+                hoja.append_row(fila)
+                time.sleep(1)  # 1 segundo entre cada escritura
+                print(f"   ✅ Fila {i+1}/{len(filas_a_escribir)}")
+            except Exception as e2:
+                print(f"   ❌ Error fila {i+1}: {e2}")
 
 # ======================================================================
 # SELENIUM - EXTRACCIÓN

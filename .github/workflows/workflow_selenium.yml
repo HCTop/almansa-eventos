@@ -1,12 +1,11 @@
-name: 🤖 Actualizar Eventos (Selenium)
+name: 🎭 Actualizar Eventos en Google Sheets
 
 on:
-  # Ejecutar automáticamente
+  # Ejecutar automáticamente Lunes y Viernes a las 9:00 AM UTC
   schedule:
-    # Lunes y Viernes a las 9:00 AM (hora UTC, ajusta según necesites)
     - cron: '0 9 * * 1,5'
   
-  # Permitir ejecución manual desde GitHub
+  # Permitir ejecución manual
   workflow_dispatch:
 
 jobs:
@@ -24,38 +23,22 @@ jobs:
         with:
           python-version: '3.11'
       
-      # 3. Instalar Chrome y ChromeDriver
+      # 3. Instalar Chrome
       - name: 🌐 Instalar Chrome
         uses: browser-actions/setup-chrome@latest
         with:
           chrome-version: stable
       
-      - name: 🔧 Verificar Chrome
-        run: |
-          chrome --version
-          which chrome
-      
-      # 4. Instalar dependencias de Python
+      # 4. Instalar dependencias
       - name: 📦 Instalar dependencias
         run: |
           pip install --upgrade pip
-          pip install selenium beautifulsoup4 lxml
+          pip install -r scripts/requirements.txt
       
-      # 5. Ejecutar el extractor
-      - name: 🎭 Extraer eventos con Selenium
+      # 5. Ejecutar extractor (escribe en Google Sheets)
+      - name: 🎭 Extraer eventos y escribir en Sheets
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
           cd scripts
-          python extractor_selenium.py
-      
-      # 6. Copiar JSON a la raíz (para GitHub Pages)
-      - name: 📋 Copiar JSON a la raíz
-        run: |
-          cp scripts/eventos_agenda.json eventos_agenda.json
-      
-      # 7. Subir cambios a GitHub
-      - name: 🚀 Commit y Push
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add eventos_agenda.json scripts/eventos_agenda.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Actualizar eventos automáticamente [Selenium]" && git push)
+          python extractor_a_sheets.py

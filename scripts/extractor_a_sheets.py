@@ -179,14 +179,14 @@ def obtener_eventos_existentes(hoja):
         print(f"⚠️ Error leyendo eventos existentes: {e}")
         return {}
 
-def limpiar_eventos_pasados(eventos_existentes, dias_gracia=3):
+def limpiar_eventos_pasados(eventos_existentes, dias_gracia=365):
     """
     Elimina eventos que ya pasaron hace más de X días.
     Mantiene eventos recientes por si alguien quiere verlos.
     
     Args:
         eventos_existentes: diccionario {id: evento}
-        dias_gracia: días después del evento antes de borrarlo (default: 3)
+        dias_gracia: días después del evento antes de borrarlo (default: 365)
     
     Returns:
         diccionario con solo eventos vigentes

@@ -5,7 +5,7 @@
 EXTRACTOR DE EVENTOS → GOOGLE SHEETS
 =====================================
 Extrae eventos de TomaTicket y los escribe en Google Sheets.
-VERSIÓN CORREGIDA: Escritura fiable, fechas correctas, sin eventos pasados.
+VERSIÓN CON CONFIGURACIÓN FÁCIL DE BORRADO
 """
 
 import gspread
@@ -24,7 +24,25 @@ import json
 import os
 
 # ======================================================================
-# CONFIGURACIÓN
+# ⚙️ CONFIGURACIÓN FÁCIL - MODIFICA AQUÍ ⚙️
+# ======================================================================
+
+# 🗑️ BORRADO AUTOMÁTICO DE EVENTOS PASADOS
+# ----------------------------------------
+# True  = ACTIVA el borrado automático de eventos pasados
+# False = DESACTIVA el borrado (tú borras manualmente en el Sheet)
+BORRAR_EVENTOS_PASADOS = False
+
+# 📅 DÍAS DE GRACIA ANTES DE BORRAR
+# ---------------------------------
+# Solo aplica si BORRAR_EVENTOS_PASADOS = True
+# Ejemplo: 3 = borra eventos que pasaron hace MÁS de 3 días
+#          7 = borra eventos que pasaron hace MÁS de 7 días
+#          0 = borra eventos en cuanto pasa su fecha
+DIAS_GRACIA_BORRADO = 7
+
+# ======================================================================
+# CONFIGURACIÓN GENERAL (normalmente no tocar)
 # ======================================================================
 
 SHEET_ID = "1Rp5I6vuVnRCcyv3fEfvhAz_dMheQ6-tMlobpSLKNEcE"
@@ -44,7 +62,8 @@ CATEGORIAS = {
     'CINE': ['cine', 'película', 'proyección'],
 }
 
-COLUMNAS = ['id', 'titulo', 'descripcion', 'fecha', 'hora', 'lugar', 'categoria', 'precio', 'urlCompra', 'esGratuito', 'fuente', 'activo']
+# IMPORTANTE: Incluye urlImagen para no perderla
+COLUMNAS = ['id', 'titulo', 'descripcion', 'fecha', 'hora', 'lugar', 'categoria', 'precio', 'urlCompra', 'esGratuito', 'fuente', 'activo', 'urlImagen']
 
 # ======================================================================
 # UTILIDADES
@@ -74,10 +93,7 @@ def limpiar_titulo(titulo):
     return resultado.strip()
 
 def parsear_fecha_tomaticket(dia_texto, mes_texto):
-    """
-    Parsea fecha de TomaTicket que viene como "03" y "Enero" por separado.
-    LÓGICA: Si el mes es anterior al actual, es del año siguiente.
-    """
+    """Parsea fecha de TomaTicket"""
     meses_es = {
         'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
         'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
@@ -95,7 +111,6 @@ def parsear_fecha_tomaticket(dia_texto, mes_texto):
         hoy = datetime.now()
         anio = hoy.year
         
-        # Si el mes del evento es anterior al mes actual, es del año siguiente
         if mes < hoy.month:
             anio = hoy.year + 1
         elif mes == hoy.month and dia < hoy.day:
@@ -137,30 +152,47 @@ def conectar_sheets():
     return hoja
 
 def obtener_eventos_existentes(hoja):
-    """Obtiene los eventos que ya están en el Sheet como diccionario {id: evento}"""
+    """
+    Obtiene TODOS los eventos del Sheet (incluidos los manuales).
+    IMPORTANTE: Lee cualquier fila con datos, no solo las que empiezan con evt_
+    """
     try:
         todas_las_filas = hoja.get_all_values()
         
         if len(todas_las_filas) <= 1:
+            print("   ℹ️ Sheet vacío o solo cabeceras")
             return {}
         
-        # Buscar la fila de cabeceras (debe tener 'id' en columna A)
+        # Buscar fila de cabeceras
         cabecera_idx = -1
         for i, fila in enumerate(todas_las_filas):
-            if fila and len(fila) > 0 and fila[0] == 'id':
+            if fila and len(fila) > 0 and fila[0].lower() == 'id':
                 cabecera_idx = i
                 break
         
         if cabecera_idx == -1:
+            print("   ⚠️ No se encontró fila de cabeceras")
             return {}
         
-        # Crear diccionario de eventos existentes
+        # Leer TODOS los eventos (manuales y automáticos)
         eventos = {}
+        eventos_leidos = 0
+        
         for fila in todas_las_filas[cabecera_idx + 1:]:
-            if fila and len(fila) > 0 and fila[0] and fila[0].startswith('evt_'):
-                evento_id = fila[0]
+            # Verificar que la fila tiene datos (al menos ID y título)
+            if fila and len(fila) >= 2 and fila[0] and fila[0].strip():
+                evento_id = fila[0].strip()
+                
+                # Generar ID si no tiene formato evt_
+                if not evento_id.startswith('evt_'):
+                    # Es un evento manual - generamos un ID basado en sus datos
+                    titulo_temp = fila[1] if len(fila) > 1 else ''
+                    fecha_temp = fila[3] if len(fila) > 3 else ''
+                    lugar_temp = fila[5] if len(fila) > 5 else ''
+                    evento_id = generar_id(titulo_temp, fecha_temp, lugar_temp)
+                
                 eventos[evento_id] = {
-                    'id': fila[0] if len(fila) > 0 else '',
+                    'id': fila[0].strip() if len(fila) > 0 else '',
                     'titulo': fila[1] if len(fila) > 1 else '',
                     'descripcion': fila[2] if len(fila) > 2 else '',
                     'fecha': fila[3] if len(fila) > 3 else '',
@@ -172,27 +204,30 @@ def obtener_eventos_existentes(hoja):
                     'esGratuito': fila[9] if len(fila) > 9 else 'FALSE',
                     'fuente': fila[10] if len(fila) > 10 else '',
                     'activo': fila[11] if len(fila) > 11 else 'TRUE',
+                    'urlImagen': fila[12] if len(fila) > 12 else '',
                 }
+                eventos_leidos += 1
         
+        print(f"   📋 Leídos {eventos_leidos} eventos del Sheet")
         return eventos
+        
     except Exception as e:
         print(f"⚠️ Error leyendo eventos existentes: {e}")
         return {}
 
-def limpiar_eventos_pasados(eventos_existentes, dias_gracia=365):
+def limpiar_eventos_pasados(eventos_existentes):
     """
-    Elimina eventos que ya pasaron hace más de X días.
-    Mantiene eventos recientes por si alguien quiere verlos.
-    
-    Args:
-        eventos_existentes: diccionario {id: evento}
-        dias_gracia: días después del evento antes de borrarlo (default: 365)
-    
-    Returns:
-        diccionario con solo eventos vigentes
+    Elimina eventos pasados del diccionario.
+    ⚠️ SOLO SE EJECUTA SI BORRAR_EVENTOS_PASADOS = True
     """
+    if not BORRAR_EVENTOS_PASADOS:
+        print("   ℹ️ Borrado automático DESACTIVADO - No se elimina nada")
+        return eventos_existentes
+    
+    print(f"   🗑️ Borrado automático ACTIVADO (gracia: {DIAS_GRACIA_BORRADO} días)")
+    
     hoy = datetime.now()
-    fecha_limite = hoy - timedelta(days=dias_gracia)
+    fecha_limite = hoy - timedelta(days=DIAS_GRACIA_BORRADO)
     
     eventos_vigentes = {}
     eventos_eliminados = 0
@@ -204,11 +239,9 @@ def limpiar_eventos_pasados(eventos_existentes, dias_gracia=365):
             fecha_evento = datetime.strptime(fecha_str, '%Y-%m-%d')
             
             if fecha_evento < fecha_limite:
-                # Evento pasado - no lo incluimos
                 eventos_eliminados += 1
-                print(f"   🗑️  Eliminando pasado: {evento.get('titulo', '')[:40]}... ({fecha_str})")
+                print(f"      🗑️ Eliminando: {evento.get('titulo', '')[:40]}... ({fecha_str})")
             else:
-                # Evento vigente - lo mantenemos
                 eventos_vigentes[evento_id] = evento
         except:
             # Si no puede parsear fecha, lo mantiene por seguridad
@@ -216,27 +249,26 @@ def limpiar_eventos_pasados(eventos_existentes, dias_gracia=365):
     
     if eventos_eliminados > 0:
         print(f"   📋 Eliminados {eventos_eliminados} eventos pasados")
+    else:
+        print(f"   ✅ No hay eventos pasados que eliminar")
     
     return eventos_vigentes
 
 def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
     """
-    Escribe eventos en el Sheet:
-    - PRIMERO limpia eventos pasados (más de 3 días)
-    - Mantiene eventos existentes (incluyendo ediciones manuales)
-    - Añade solo los nuevos
-    - Ordena TODO por fecha
-    - Cabeceras siempre en fila 1, columna A
+    Escribe eventos en el Sheet.
+    SIEMPRE mantiene los eventos existentes (a menos que se active el borrado).
     """
-    print(f"\n📝 Procesando {len(eventos_nuevos)} eventos extraídos...")
-    print(f"📊 Eventos ya en Sheet: {len(eventos_existentes)}")
+    print(f"\n📝 Procesando eventos...")
+    print(f"   📊 Eventos en Sheet: {len(eventos_existentes)}")
+    print(f"   📦 Eventos extraídos: {len(eventos_nuevos)}")
     
-    # PASO 1: Limpiar eventos pasados de los existentes
-    #print("\n🧹 Limpiando eventos pasados...")
-    #eventos_existentes = limpiar_eventos_pasados(eventos_existentes, dias_gracia=3)
+    # PASO 1: Aplicar limpieza (solo si está activada)
+    print("\n🧹 Revisando eventos pasados...")
+    eventos_procesados = limpiar_eventos_pasados(eventos_existentes)
     
-    # Combinar: existentes + nuevos (sin duplicados)
-    todos_los_eventos = dict(eventos_existentes)  # Copiar existentes
+    # PASO 2: Combinar existentes + nuevos
+    todos_los_eventos = dict(eventos_procesados)
     
     nuevos_añadidos = 0
     for evento in eventos_nuevos:
@@ -245,20 +277,19 @@ def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
             nuevos_añadidos += 1
             print(f"   ➕ Nuevo: {evento['titulo'][:45]}... ({evento['fecha']})")
         else:
-            print(f"   ⏭️  Ya existe: {evento['titulo'][:40]}...")
+            print(f"   ⏭️ Ya existe: {evento['titulo'][:40]}...")
     
-    if nuevos_añadidos == 0:
-        print("✅ No hay eventos nuevos que añadir")
-        return
+    # PASO 3: SIEMPRE escribir (aunque no haya cambios, para mantener consistencia)
+    # Esto evita perder datos si hubo limpieza pero no hay nuevos
     
-    # Convertir a lista y ordenar por fecha
+    # Ordenar por fecha
     lista_eventos = list(todos_los_eventos.values())
     lista_eventos.sort(key=lambda x: x.get('fecha', '9999-99-99'))
     
-    print(f"\n📤 Escribiendo {len(lista_eventos)} eventos ordenados por fecha...")
+    print(f"\n📤 Escribiendo {len(lista_eventos)} eventos en el Sheet...")
     
-    # Preparar datos para escritura (cabeceras + eventos)
-    datos = [COLUMNAS]  # Fila 1: cabeceras
+    # Preparar datos
+    datos = [COLUMNAS]
     
     for evento in lista_eventos:
         fila = [
@@ -273,16 +304,18 @@ def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
             evento.get('urlCompra', ''),
             str(evento.get('esGratuito', 'FALSE')).upper(),
             evento.get('fuente', ''),
-            str(evento.get('activo', 'TRUE')).upper()
+            str(evento.get('activo', 'TRUE')).upper(),
+            evento.get('urlImagen', '')
         ]
         datos.append(fila)
     
-    # ESCRIBIR TODO DE UNA VEZ (batch) - Limpia y reescribe
+    # Escribir
     try:
         hoja.clear()
         hoja.update('A1', datos, value_input_option='RAW')
-        print(f"✅ {nuevos_añadidos} eventos nuevos añadidos")
-        print(f"📊 Total en Sheet: {len(lista_eventos)}")
+        print(f"\n✅ Escritura completada:")
+        print(f"   ➕ Eventos nuevos añadidos: {nuevos_añadidos}")
+        print(f"   📊 Total en Sheet: {len(lista_eventos)}")
     except Exception as e:
         print(f"❌ Error escribiendo: {e}")
 
@@ -307,7 +340,7 @@ def crear_driver():
     return driver
 
 def extraer_eventos_tomaticket(url, teatro_nombre):
-    """Extrae eventos de TomaTicket - SOLO próximos eventos, ignora los pasados"""
+    """Extrae eventos de TomaTicket - SOLO próximos eventos"""
     print(f"\n🎭 Extrayendo {teatro_nombre}...")
     eventos = []
     driver = None
@@ -320,54 +353,45 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
         
-        # IMPORTANTE: Buscar SOLO la sección de "Próximos eventos"
-        # y EXCLUIR "Eventos anteriormente celebrados"
-        
+        # Buscar secciones
         seccion_proximos = None
         seccion_pasados = None
         
-        # Buscar todos los encabezados de sección
         for elemento in soup.find_all(['h2', 'h3']):
             texto = elemento.get_text().lower()
             
             if 'próximos' in texto or 'proximos' in texto:
-                # Encontrar el contenedor padre de esta sección
                 padre = elemento.find_parent(['section', 'div'])
                 if padre:
                     seccion_proximos = padre
                     
             elif 'anteriormente' in texto or 'pasados' in texto or 'celebrados' in texto:
-                # Marcar sección de pasados para excluirla
                 padre = elemento.find_parent(['section', 'div'])
                 if padre:
                     seccion_pasados = padre
         
-        # Si encontramos sección de próximos, usar solo esa
         if seccion_proximos:
             contenedor = seccion_proximos
             print(f"   📍 Encontrada sección 'Próximos eventos'")
         else:
-            # Si no, usar todo pero filtrar más estrictamente
             contenedor = soup
-            print(f"   ⚠️  No se encontró sección específica, usando filtro por fecha")
+            print(f"   ⚠️ No se encontró sección específica, usando filtro por fecha")
         
-        # Buscar tarjetas de eventos
         cards = contenedor.find_all(['article', 'div'], class_=re.compile(r'event|card', re.I))
         
         hoy = datetime.now()
         
         for card in cards:
             try:
-                # VERIFICAR que la tarjeta NO está en sección de pasados
+                # Verificar que NO está en sección de pasados
                 if seccion_pasados:
-                    # Comprobar si esta tarjeta es descendiente de la sección de pasados
                     es_pasado = False
                     for parent in card.parents:
                         if parent == seccion_pasados:
                             es_pasado = True
                             break
                     if es_pasado:
-                        continue  # Saltar este evento
+                        continue
                 
                 # TÍTULO
                 titulo_elem = card.find(['h2', 'h3', 'h4', 'a'], class_=re.compile(r'title|titulo|name', re.I))
@@ -383,11 +407,10 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
                 
                 titulo = limpiar_titulo(titulo_raw)
                 
-                # FECHA - Buscar día y mes
+                # FECHA
                 fecha_iso = None
                 texto_card = card.get_text()
                 
-                # Patrón: número + mes en español
                 match = re.search(r'(\d{1,2})\s*(Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)', texto_card, re.IGNORECASE)
                 if match:
                     fecha_iso = parsear_fecha_tomaticket(match.group(1), match.group(2))
@@ -395,11 +418,10 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
                 if not fecha_iso:
                     continue
                 
-                # FILTRO ADICIONAL: Si la fecha calculada está en el pasado, ignorar
+                # Filtro: ignorar eventos pasados
                 try:
                     fecha_evento = datetime.strptime(fecha_iso, '%Y-%m-%d')
                     if fecha_evento < hoy - timedelta(days=1):
-                        # Este evento ya pasó - ignorar
                         continue
                 except:
                     pass
@@ -410,7 +432,7 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
                 if match_precio:
                     precio = f"Desde {match_precio.group(1)} €"
                 
-                # HORA (por defecto 20:00)
+                # HORA
                 hora = "20:00"
                 
                 # URL
@@ -423,7 +445,6 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
                     elif href.startswith('/'):
                         link = 'https://www.tomaticket.es' + href
                 
-                # Crear evento
                 evento = {
                     'id': generar_id(titulo, fecha_iso, teatro_nombre),
                     'titulo': titulo,
@@ -436,10 +457,10 @@ def extraer_eventos_tomaticket(url, teatro_nombre):
                     'urlCompra': link,
                     'esGratuito': 'FALSE',
                     'fuente': 'TomaTicket',
-                    'activo': 'TRUE'
+                    'activo': 'TRUE',
+                    'urlImagen': ''
                 }
                 
-                # Evitar duplicados en la misma extracción
                 if not any(e['id'] == evento['id'] for e in eventos):
                     eventos.append(evento)
                     print(f"   ✅ {titulo[:50]}... ({fecha_iso})")
@@ -464,12 +485,18 @@ def main():
     print("🎭 EXTRACTOR DE EVENTOS → GOOGLE SHEETS")
     print("=" * 60)
     
+    # Mostrar configuración actual
+    print(f"\n⚙️ CONFIGURACIÓN ACTUAL:")
+    print(f"   🗑️ Borrado automático: {'✅ ACTIVADO' if BORRAR_EVENTOS_PASADOS else '❌ DESACTIVADO'}")
+    if BORRAR_EVENTOS_PASADOS:
+        print(f"   📅 Días de gracia: {DIAS_GRACIA_BORRADO}")
+    print("")
+    
     # Conectar a Sheets
     hoja = conectar_sheets()
     
     # Obtener eventos existentes
     eventos_existentes = obtener_eventos_existentes(hoja)
-    print(f"📋 Eventos existentes en Sheet: {len(eventos_existentes)}")
     
     # Extraer eventos de TomaTicket
     todos_eventos = []
@@ -477,13 +504,10 @@ def main():
         eventos = extraer_eventos_tomaticket(url, teatro)
         todos_eventos.extend(eventos)
     
-    print(f"\n📦 Total extraídos: {len(todos_eventos)}")
+    print(f"\n📦 Total extraídos de TomaTicket: {len(todos_eventos)}")
     
     # Escribir en Sheets
-    if todos_eventos:
-        escribir_eventos(hoja, todos_eventos, eventos_existentes)
-    else:
-        print("⚠️ No se encontraron eventos")
+    escribir_eventos(hoja, todos_eventos, eventos_existentes)
     
     print("\n" + "=" * 60)
     print("✅ COMPLETADO")

@@ -232,8 +232,8 @@ def escribir_eventos(hoja, eventos_nuevos, eventos_existentes):
     print(f"📊 Eventos ya en Sheet: {len(eventos_existentes)}")
     
     # PASO 1: Limpiar eventos pasados de los existentes
-    print("\n🧹 Limpiando eventos pasados...")
-    eventos_existentes = limpiar_eventos_pasados(eventos_existentes, dias_gracia=3)
+    #print("\n🧹 Limpiando eventos pasados...")
+    #eventos_existentes = limpiar_eventos_pasados(eventos_existentes, dias_gracia=3)
     
     # Combinar: existentes + nuevos (sin duplicados)
     todos_los_eventos = dict(eventos_existentes)  # Copiar existentes
